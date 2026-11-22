@@ -1,0 +1,114 @@
+package handlers
+
+import (
+	"errors"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+
+	"toko-ai-microservices/internal/shared/embedding"
+	h "toko-ai-microservices/internal/shared/httputil"
+	"toko-ai-microservices/service-catalog/internal/model"
+	"toko-ai-microservices/service-catalog/internal/semantic"
+)
+
+func round4(f float64) float64 { return math.Round(f*10000) / 10000 }
+
+// semanticSearch: GET /api/products/semantic-search (PRD 02 §6.2).
+func (d *Deps) semanticSearch(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if n := utf8.RuneCountInString(q); n < 3 || n > 300 {
+		h.Fail(w, r, h.ErrValidation("Parameter q wajib 3–300 karakter.",
+			[]h.FieldError{{Field: "q", Message: "panjang harus 3–300 karakter"}}))
+		return
+	}
+	limit, err := h.QueryInt(r, "limit", 5, 1, 20)
+	if err != nil {
+		h.Fail(w, r, err)
+		return
+	}
+	minScore := d.MinScore
+	if s := r.URL.Query().Get("min_score"); s != "" {
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil || v < 0 || v > 1 {
+			h.Fail(w, r, h.ErrValidation("Parameter min_score harus 0–1.",
+				[]h.FieldError{{Field: "min_score", Message: "harus bilangan 0–1"}}))
+			return
+		}
+		minScore = v
+	}
+	f, err := parseFilter(r)
+	if err != nil {
+		h.Fail(w, r, err)
+		return
+	}
+
+	ctx := r.Context()
+	active, err := d.Repo.ActiveProductsMap(ctx) // hanya produk aktif, harga & stok segar
+	if err != nil {
+		h.Fail(w, r, err)
+		return
+	}
+	keep := func(id string) bool {
+		p, ok := active[id]
+		if !ok {
+			return false
+		}
+		if f.Category != "" && p.Category != f.Category {
+			return false
+		}
+		if f.MinPrice != nil && p.Price < *f.MinPrice {
+			return false
+		}
+		if f.MaxPrice != nil && p.Price > *f.MaxPrice {
+			return false
+		}
+		if f.InStock != nil && *f.InStock && p.Stock <= 0 {
+			return false
+		}
+		return true
+	}
+
+	mode := "semantic"
+	results := []model.ScoredProduct{}
+	scored, err := d.Index.Search(ctx, q, limit, float32(minScore), keep)
+	switch {
+	case err == nil:
+		for _, s := range scored {
+			sc := round4(float64(s.Score))
+			results = append(results, model.ScoredProduct{Product: active[s.ID], Score: &sc})
+		}
+	case errors.Is(err, semantic.ErrFallback), errors.Is(err, embedding.ErrUnavailable):
+		mode = "keyword_fallback"
+		w.Header().Set("x-search-mode", mode)
+		items, kerr := d.Repo.KeywordSearch(ctx, q, f, limit)
+		if kerr != nil {
+			h.Fail(w, r, kerr)
+			return
+		}
+		for _, p := range items {
+			results = append(results, model.ScoredProduct{Product: p, Score: nil})
+		}
+	default:
+		h.Fail(w, r, err)
+		return
+	}
+	h.WriteList(w, results, h.Meta{"total": len(results), "limit": limit, "query": q, "mode": mode, "min_score": minScore})
+}
+
+// reindex: POST /api/products/reindex (ADMIN_SISTEM) -> 202 {"data":{"queued":N}}.
+func (d *Deps) reindex(w http.ResponseWriter, r *http.Request) {
+	n, err := d.Index.Reindex(r.Context())
+	switch {
+	case err == nil:
+		h.WriteData(w, http.StatusAccepted, map[string]int{"queued": n})
+	case errors.Is(err, semantic.ErrBusy):
+		h.Fail(w, r, h.ErrConflict("CONFLICT", "Reindex sedang berjalan.", nil))
+	case errors.Is(err, embedding.ErrUnavailable):
+		h.Fail(w, r, h.NewError(http.StatusServiceUnavailable, "EMBEDDING_UNAVAILABLE", "Embedding tidak tersedia (GOOGLE_API_KEY kosong).", nil))
+	default:
+		h.Fail(w, r, err)
+	}
+}

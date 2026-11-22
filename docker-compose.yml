@@ -1,0 +1,85 @@
+# Jalankan semua:  docker compose up --build        (butuh .env di root dengan GOOGLE_API_KEY)
+# Hentikan:        docker compose down              (tambah -v untuk hapus data SQLite)
+x-common: &common
+  restart: unless-stopped
+  env_file: .env           # nilai di bawah `environment` menimpa .env (URL antar-container)
+  networks: [toko]
+
+x-urls: &urls
+  CATALOG_URL: http://catalog:4001
+  ORDER_URL: http://order:4002
+  TICKET_URL: http://ticket:4003
+  MCP_URL: http://mcp:5000/mcp
+  MCP_BASE_URL: http://mcp:5000
+  AGENT_URL: http://agent:8000
+
+services:
+  catalog:
+    <<: *common
+    build: { context: ., dockerfile: service-catalog/Dockerfile }
+    environment: { <<: *urls, CATALOG_PORT: 4001, CATALOG_DB_PATH: /app/data/catalog.db }
+    volumes: [catalog-data:/app/data]
+
+  order:
+    <<: *common
+    build: { context: ., dockerfile: service-order/Dockerfile }
+    environment: { <<: *urls, ORDER_PORT: 4002, ORDER_DB_PATH: /app/data/order.db }
+    volumes: [order-data:/app/data]
+    depends_on: { catalog: { condition: service_healthy } }
+
+  ticket:
+    <<: *common
+    build: { context: ., dockerfile: service-ticket/Dockerfile }
+    environment: { <<: *urls, TICKET_PORT: 4003, TICKET_DB_PATH: /app/data/ticket.db }
+    volumes: [ticket-data:/app/data]
+    depends_on: { order: { condition: service_healthy } }
+
+  mcp:
+    <<: *common
+    build: { context: ., dockerfile: service-mcp/Dockerfile }
+    environment: { <<: *urls, MCP_PORT: 5000 }
+    depends_on:
+      catalog: { condition: service_healthy }
+      order: { condition: service_healthy }
+      ticket: { condition: service_healthy }
+
+  agent:
+    <<: *common
+    build: { context: ., dockerfile: service-agent/Dockerfile }
+    environment: { <<: *urls, AGENT_PORT: 8000 }
+    depends_on: { mcp: { condition: service_healthy } }
+
+  gateway:
+    <<: *common
+    build: { context: ., dockerfile: service-gateway/Dockerfile }
+    environment:
+      <<: *urls
+      GATEWAY_PORT: 8080
+      AUTH_DB_PATH: /app/data/auth.db
+      CORS_ORIGIN: http://localhost:3000
+    ports: ["8080:8080"]          # satu-satunya backend yang dibuka ke host
+    volumes: [gateway-data:/app/data]
+    depends_on:
+      catalog: { condition: service_healthy }
+      order: { condition: service_healthy }
+      ticket: { condition: service_healthy }
+      mcp: { condition: service_healthy }
+      agent: { condition: service_healthy }
+
+  frontend:
+    build:
+      context: ./service-frontend
+      args: { NUXT_PUBLIC_API_BASE: "http://localhost:8080" }   # alamat gateway dari browser
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    networks: [toko]
+    depends_on: { gateway: { condition: service_healthy } }
+
+networks:
+  toko:
+
+volumes:
+  catalog-data:
+  order-data:
+  ticket-data:
+  gateway-data:

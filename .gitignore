@@ -1,0 +1,25 @@
+# secrets & local config
+.env
+*.local
+
+# runtime data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Go
+bin/
+*.exe
+*.test
+*.out
+
+# Node / Nuxt
+node_modules/
+.nuxt/
+.output/
+dist/
+.DS_Store
+
+# catatan pribadi (tidak dipublikasikan)
+docs/LAPORAN-PEMBELAJARAN.md
