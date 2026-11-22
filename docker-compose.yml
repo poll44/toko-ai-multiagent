@@ -1,5 +1,6 @@
 # Jalankan semua:  docker compose up --build        (butuh .env di root dengan GOOGLE_API_KEY)
-# Hentikan:        docker compose down              (tambah -v untuk hapus data SQLite)
+# Hentikan:        docker compose down
+# Data SQLite ada di ./data/<service>/*.db (folder biasa di host, bukan volume Docker). Hapus folder itu untuk reset data.
 x-common: &common
   restart: unless-stopped
   env_file: .env           # nilai di bawah `environment` menimpa .env (URL antar-container)
@@ -18,20 +19,20 @@ services:
     <<: *common
     build: { context: ., dockerfile: service-catalog/Dockerfile }
     environment: { <<: *urls, CATALOG_PORT: 4001, CATALOG_DB_PATH: /app/data/catalog.db }
-    volumes: [catalog-data:/app/data]
+    volumes: ["./data/catalog:/app/data"]
 
   order:
     <<: *common
     build: { context: ., dockerfile: service-order/Dockerfile }
     environment: { <<: *urls, ORDER_PORT: 4002, ORDER_DB_PATH: /app/data/order.db }
-    volumes: [order-data:/app/data]
+    volumes: ["./data/order:/app/data"]
     depends_on: { catalog: { condition: service_healthy } }
 
   ticket:
     <<: *common
     build: { context: ., dockerfile: service-ticket/Dockerfile }
     environment: { <<: *urls, TICKET_PORT: 4003, TICKET_DB_PATH: /app/data/ticket.db }
-    volumes: [ticket-data:/app/data]
+    volumes: ["./data/ticket:/app/data"]
     depends_on: { order: { condition: service_healthy } }
 
   mcp:
@@ -58,7 +59,7 @@ services:
       AUTH_DB_PATH: /app/data/auth.db
       CORS_ORIGIN: http://localhost:3000
     ports: ["8080:8080"]          # satu-satunya backend yang dibuka ke host
-    volumes: [gateway-data:/app/data]
+    volumes: ["./data/gateway:/app/data"]
     depends_on:
       catalog: { condition: service_healthy }
       order: { condition: service_healthy }
@@ -77,9 +78,3 @@ services:
 
 networks:
   toko:
-
-volumes:
-  catalog-data:
-  order-data:
-  ticket-data:
-  gateway-data:

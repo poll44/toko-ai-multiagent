@@ -131,9 +131,10 @@ Variabel yang paling penting:
 ```bash
 cp .env.example .env              # isi GOOGLE_API_KEY
 docker compose up --build -d      # semua service
-docker compose down               # tambah -v untuk menghapus data SQLite
+docker compose down               # menghentikan service (data tetap ada)
 ```
 - Hanya **frontend (:3000)** dan **gateway (:8080)** yang dibuka ke host. Service lain hanya ada di jaringan Docker.
+- **Lokasi database:** file SQLite disimpan di folder biasa di host, yaitu `./data/<service>/*.db` (`gateway/auth.db`, `catalog/catalog.db`, `order/order.db`, `ticket/ticket.db`). Buka dengan DB Browser for SQLite atau ekstensi SQLite di VS Code, sebaiknya dalam mode baca saja. Untuk mereset data ke awal, hentikan service lalu hapus folder `data/`.
 - Tiap service punya `Dockerfile` multi-stage dengan user non-root dan healthcheck. Build context-nya root repo (frontend memakai `service-frontend/`).
 - File `.env` tidak ikut masuk ke image (lihat `.dockerignore`).
 
