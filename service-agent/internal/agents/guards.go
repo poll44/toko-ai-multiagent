@@ -18,7 +18,7 @@ import (
 
 var entityIDRe = regexp.MustCompile(`\b(?:PRD|ORD|TKT|KB)-\d{3,}\b`)
 
-// publicTools: satu-satunya tool yang boleh dipanggil GUEST (PRD 06 §6).
+// publicTools: satu-satunya tool yang boleh dipanggil GUEST (TRD 06 §6).
 var publicTools = []string{"search_products", "semantic_search_products", "get_product", "list_categories", "check_stock", "search_store_policy"}
 
 // writeTools wajib confirmed_by_user=true (konfirmasi eksplisit 2 langkah, H8).
@@ -81,7 +81,7 @@ func addSeen(ctx agent.CallbackContext, ids []string) {
 }
 
 // BeforeAgent: validasi identitas session & catat ID yang disebut user (agar tidak dianggap halusinasi).
-// state.user_id harus sama dengan userId invocation — mencegah sesi milik user lain dipakai (PRD 06 §2 aturan 2).
+// state.user_id harus sama dengan userId invocation — mencegah sesi milik user lain dipakai (TRD 06 §2 aturan 2).
 func BeforeAgent(ctx agent.CallbackContext) (*genai.Content, error) {
 	if v, err := ctx.ReadonlyState().Get(StateUserID); err == nil {
 		if s, _ := v.(string); s != "" && s != ctx.UserID() {

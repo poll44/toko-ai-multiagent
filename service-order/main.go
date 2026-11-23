@@ -1,4 +1,4 @@
-// service-order (:4002) — pesanan, simulasi pembayaran, stok via catalog. Lihat docs/prd/03-SERVICE-ORDER.md
+// service-order (:4002) — pesanan, simulasi pembayaran, stok via catalog. Lihat docs/trd/03-SERVICE-ORDER.md
 package main
 
 import (

@@ -1,4 +1,4 @@
-// Package auth: penerbitan & verifikasi JWT HS256 (golang-jwt/jwt/v5) — PRD 01 §5.
+// Package auth: penerbitan & verifikasi JWT HS256 (golang-jwt/jwt/v5) — TRD 01 §5.
 package auth
 
 import (

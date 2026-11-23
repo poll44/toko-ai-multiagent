@@ -1,4 +1,4 @@
-// Package store: akses auth.db (users, login_audit) — skema sesuai PRD 01 §3.
+// Package store: akses auth.db (users, login_audit) — skema sesuai TRD 01 §3.
 package store
 
 import (

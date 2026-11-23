@@ -1,4 +1,4 @@
-// Package handlers: routing gateway, auth, dan health developer (PRD 01 §4, §6).
+// Package handlers: routing gateway, auth, dan health developer (TRD 01 §4, §6).
 package handlers
 
 import (
@@ -29,7 +29,7 @@ type Deps struct {
 	Users *store.Repo
 }
 
-// Handler merakit seluruh gateway: route, middleware (urutan PRD 01 §7), dan fallback JSON 404.
+// Handler merakit seluruh gateway: route, middleware (urutan TRD 01 §7), dan fallback JSON 404.
 func Handler(d *Deps) http.Handler {
 	cfg := d.Cfg
 	authn := mw.Authenticate(cfg.JWTSecret)

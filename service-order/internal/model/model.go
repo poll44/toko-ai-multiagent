@@ -1,4 +1,4 @@
-// Package model: tipe data service-order (JSON snake_case, PRD 03 §6).
+// Package model: tipe data service-order (JSON snake_case, TRD 03 §6).
 package model
 
 const (

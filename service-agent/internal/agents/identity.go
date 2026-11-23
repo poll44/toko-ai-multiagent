@@ -19,7 +19,7 @@ const (
 	StatePolicySeen = "policy_seen" // "1" bila search_store_policy pernah mengembalikan isi kebijakan di sesi ini
 )
 
-// IdentityFromState membaca identitas dari session state. Tidak ada/invalid => GUEST (PRD 06 §2 aturan 4).
+// IdentityFromState membaca identitas dari session state. Tidak ada/invalid => GUEST (TRD 06 §2 aturan 4).
 func IdentityFromState(st session.ReadonlyState) (userID, role string) {
 	userID, role = httputil.RoleGuest, httputil.RoleGuest
 	if st == nil {

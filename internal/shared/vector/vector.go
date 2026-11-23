@@ -1,5 +1,5 @@
 // Package vector: operasi vektor untuk pencarian semantik (pure Go).
-// Penyimpanan default = BLOB float32 LE di SQLite + cosine brute-force (lihat Master PRD §9).
+// Penyimpanan default = BLOB float32 LE di SQLite + cosine brute-force (lihat Master TRD §9).
 package vector
 
 import (

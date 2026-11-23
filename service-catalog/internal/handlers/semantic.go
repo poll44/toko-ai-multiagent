@@ -16,7 +16,7 @@ import (
 
 func round4(f float64) float64 { return math.Round(f*10000) / 10000 }
 
-// semanticSearch: GET /api/products/semantic-search (PRD 02 §6.2).
+// semanticSearch: GET /api/products/semantic-search (TRD 02 §6.2).
 func (d *Deps) semanticSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if n := utf8.RuneCountInString(q); n < 3 || n > 300 {

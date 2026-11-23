@@ -1,4 +1,4 @@
-# 04 — PRD `service-ticket`
+# 04 — TRD `service-ticket`
 
 | Item | Nilai |
 |---|---|
@@ -7,7 +7,7 @@
 | Database | `ticket.db` (`TICKET_DB_PATH`) |
 | Peran | (1) Tiket komplain/bantuan + lifecycle; (2) **Knowledge Base kebijakan toko (FAQ/SOP) dengan pencarian vektor untuk RAG** |
 | Dependensi | `service-order` (validasi kepemilikan order); Gemini Embedding API |
-| Rujukan | `00-MASTER-PRD.md` (konvensi, §9 Vector & RAG) |
+| Rujukan | `00-MASTER-TRD.md` (konvensi, §9 Vector & RAG) |
 
 > Knowledge base ditempatkan di `service-ticket` (bukan service baru) karena kebijakan toko dipakai langsung untuk memutuskan apakah suatu keluhan perlu menjadi tiket.
 

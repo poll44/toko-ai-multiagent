@@ -1,4 +1,4 @@
-// service-catalog (:4001) — produk, stok, pencarian semantik. Lihat docs/prd/02-SERVICE-CATALOG.md
+// service-catalog (:4001) — produk, stok, pencarian semantik. Lihat docs/trd/02-SERVICE-CATALOG.md
 package main
 
 import (

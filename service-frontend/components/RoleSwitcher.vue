@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Quick Role Switcher — TANPA form login: klik akun demo => login otomatis (PRD 07 §4.1).
+// Quick Role Switcher — TANPA form login: klik akun demo => login otomatis (TRD 07 §4.1).
 import type { Role } from '~/types/api'
 
 const auth = useAuth()

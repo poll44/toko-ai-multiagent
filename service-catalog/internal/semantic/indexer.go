@@ -1,5 +1,5 @@
-// Package semantic: indexing embedding produk + pencarian vektor (PRD 02 §5, §6.2).
-// Penyimpanan v1 = BLOB di SQLite + cosine brute-force di Go (lihat Master PRD §9).
+// Package semantic: indexing embedding produk + pencarian vektor (TRD 02 §5, §6.2).
+// Penyimpanan v1 = BLOB di SQLite + cosine brute-force di Go (lihat Master TRD §9).
 package semantic
 
 import (

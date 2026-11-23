@@ -1,4 +1,4 @@
-# 03 — PRD `service-order`
+# 03 — TRD `service-order`
 
 | Item | Nilai |
 |---|---|
@@ -7,7 +7,7 @@
 | Database | `order.db` (`ORDER_DB_PATH`) |
 | Peran | Pesanan, simulasi pembayaran, orkestrasi stok dengan `service-catalog` |
 | Dependensi | `service-catalog` (`CATALOG_URL`) via `net/http` client |
-| Rujukan | `00-MASTER-PRD.md` |
+| Rujukan | `00-MASTER-TRD.md` |
 
 ## 1. Struktur Kode
 ```

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Floating / Embedded AI Chat (PRD 07 §4.2). Teks agent dirender TANPA v-html: tokenizer aman (tebal + tautan ID).
+// Floating / Embedded AI Chat (TRD 07 §4.2). Teks agent dirender TANPA v-html: tokenizer aman (tebal + tautan ID).
 const props = withDefaults(defineProps<{ mode?: 'floating' | 'embedded'; initialPrompt?: string }>(), { mode: 'floating' })
 
 const chat = useChat()

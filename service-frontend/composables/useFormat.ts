@@ -1,4 +1,4 @@
-// Format uang Rp & waktu lokal Asia/Jakarta (PRD 07 §1.5).
+// Format uang Rp & waktu lokal Asia/Jakarta (TRD 07 §1.5).
 export const idr = (n: number | null | undefined) => `Rp${new Intl.NumberFormat('id-ID').format(n ?? 0)}`
 
 export const fmtDate = (iso: string | null | undefined) =>

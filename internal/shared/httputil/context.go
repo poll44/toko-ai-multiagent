@@ -2,7 +2,7 @@ package httputil
 
 import "context"
 
-// Role sesuai Master PRD §5.
+// Role sesuai Master TRD §5.
 const (
 	RoleGuest       = "GUEST"
 	RoleCustomer    = "CUSTOMER"

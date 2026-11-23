@@ -8,7 +8,7 @@ type FieldError struct {
 	Message string `json:"message"`
 }
 
-// APIError adalah error yang siap dipetakan ke respons error standar (Master PRD §7.2).
+// APIError adalah error yang siap dipetakan ke respons error standar (Master TRD §7.2).
 type APIError struct {
 	Status  int
 	Code    string

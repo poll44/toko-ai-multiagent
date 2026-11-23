@@ -1,4 +1,4 @@
-// Package handlers: routing + guard RBAC + handler service-catalog (PRD 02 §2, §6).
+// Package handlers: routing + guard RBAC + handler service-catalog (TRD 02 §2, §6).
 package handlers
 
 import (

@@ -1,4 +1,4 @@
-// Package service: logika pesanan — state machine, orkestrasi stok dengan service-catalog, kompensasi (PRD 03 §4, §6).
+// Package service: logika pesanan — state machine, orkestrasi stok dengan service-catalog, kompensasi (TRD 03 §4, §6).
 package service
 
 import (
@@ -37,7 +37,7 @@ func New(repo *store.Repo, catalog Catalog, paymentTTL time.Duration) *Service {
 // SetClock mengganti sumber waktu (untuk test).
 func (s *Service) SetClock(f func() time.Time) { s.now = f }
 
-// allowed: transisi sah (PRD 03 §4). Pemeriksaan pelaku dilakukan di tiap operasi.
+// allowed: transisi sah (TRD 03 §4). Pemeriksaan pelaku dilakukan di tiap operasi.
 var allowed = map[string][]string{
 	model.StatusPendingPayment: {model.StatusPaid, model.StatusPaymentFailed, model.StatusPaymentTimeout, model.StatusCancelled},
 	model.StatusPaid:           {model.StatusProcessing, model.StatusCancelled},

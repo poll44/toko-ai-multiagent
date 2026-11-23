@@ -1,4 +1,4 @@
-// Package store: akses order.db — skema sesuai PRD 03 §3.
+// Package store: akses order.db — skema sesuai TRD 03 §3.
 // TODO(impl): seed 8 order, repo order, state machine.
 package store
 

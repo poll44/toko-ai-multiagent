@@ -1,4 +1,4 @@
-// Package store: akses catalog.db — skema sesuai PRD 02 §3.
+// Package store: akses catalog.db — skema sesuai TRD 02 §3.
 // TODO(impl): seed 14 produk, repo produk/stok/embedding.
 package store
 

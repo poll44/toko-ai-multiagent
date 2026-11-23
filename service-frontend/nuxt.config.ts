@@ -1,4 +1,4 @@
-// Nuxt 3 SPA murni (ssr:false) — JWT di localStorage, browser memanggil gateway langsung. docs/prd/07-SERVICE-FRONTEND.md §7
+// Nuxt 3 SPA murni (ssr:false) — JWT di localStorage, browser memanggil gateway langsung. docs/trd/07-SERVICE-FRONTEND.md §7
 export default defineNuxtConfig({
   ssr: false, // wajib: SPA, tanpa render server & tanpa server routes (Nitro API)
   compatibilityDate: '2024-11-01',

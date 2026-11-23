@@ -1,6 +1,6 @@
 import type { AuthUser, LoginResult, Role } from '~/types/api'
 
-// Password demo (khusus demo; PRD 07 §3.1) — hanya dipakai di composable ini.
+// Password demo (khusus demo; TRD 07 §3.1) — hanya dipakai di composable ini.
 const DEMO_PASSWORD = '123456'
 
 /**

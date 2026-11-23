@@ -1,4 +1,4 @@
-// Guard rute (UX saja — keamanan sebenarnya di backend). PRD 07 §2.
+// Guard rute (UX saja — keamanan sebenarnya di backend). TRD 07 §2.
 import type { Role } from '~/types/api'
 
 // Prefiks rute proteksi => role yang boleh. Rute lain publik.

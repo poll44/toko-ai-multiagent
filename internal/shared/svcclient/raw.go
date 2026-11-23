@@ -53,7 +53,7 @@ func transportError(err error) *UpstreamError {
 
 // DoRaw memanggil upstream dan mengembalikan status + body JSON APA ADANYA (untuk passthrough, mis. MCP).
 // Kegagalan jaringan/timeout dikembalikan sebagai body error standar ({"error":{...}}) dengan status 502/504,
-// sehingga pemanggil selalu menerima JSON sesuai kontrak (Master PRD §7).
+// sehingga pemanggil selalu menerima JSON sesuai kontrak (Master TRD §7).
 func (c *Client) DoRaw(ctx context.Context, method, path string, in any) (status int, body []byte) {
 	req, err := c.newRequest(ctx, method, path, in)
 	if err != nil {

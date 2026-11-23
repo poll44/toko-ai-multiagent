@@ -21,7 +21,7 @@ const maxIdentityToolsets = 256
 // identityToolset adalah tool.Toolset yang memilih koneksi MCP berdasarkan identitas di session state.
 // mcptoolset.Config hanya menerima Transport (tanpa header dinamis), sehingga satu mcptoolset dibuat PER
 // IDENTITAS (user_id+role) dengan header tetap milik identitas itu. DILARANG memakai satu toolset global
-// dengan header statis (PRD 06 §2.1). Toolset di-cache; batas 256 identitas lalu di-reset.
+// dengan header statis (TRD 06 §2.1). Toolset di-cache; batas 256 identitas lalu di-reset.
 type identityToolset struct {
 	name    string
 	mcpURL  string

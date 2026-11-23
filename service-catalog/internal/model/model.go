@@ -1,4 +1,4 @@
-// Package model: tipe data service-catalog (JSON snake_case, sesuai PRD 02 §6).
+// Package model: tipe data service-catalog (JSON snake_case, sesuai TRD 02 §6).
 package model
 
 type Product struct {

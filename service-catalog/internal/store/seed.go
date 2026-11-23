@@ -13,7 +13,7 @@ type seedProduct struct {
 	Active                                 bool
 }
 
-// 14 produk seed (PRD 02 §4). PRD-010 stok 0, PRD-012 stok menipis, PRD-013 nonaktif, PRD-014 target uji semantik.
+// 14 produk seed (TRD 02 §4). PRD-010 stok 0, PRD-012 stok menipis, PRD-013 nonaktif, PRD-014 target uji semantik.
 var seedProducts = []seedProduct{
 	{"PRD-001", "Earbuds Nova X1 TWS", "audio", "Earbuds nirkabel true wireless dengan peredam bising aktif untuk musik dan panggilan.",
 		"Bluetooth 5.3; ANC hingga 30 dB; baterai 8 jam + case 24 jam; tahan air IPX4; driver 10 mm.", 349000, 50, true},

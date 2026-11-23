@@ -1,4 +1,4 @@
-// Package store: akses ticket.db — skema sesuai PRD 04 §3 (tiket + knowledge base + vektor).
+// Package store: akses ticket.db — skema sesuai TRD 04 §3 (tiket + knowledge base + vektor).
 // TODO(impl): seed 5 tiket & 8 dokumen KB, repo, chunker, indexer.
 package store
 

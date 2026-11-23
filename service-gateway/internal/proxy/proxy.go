@@ -1,4 +1,4 @@
-// Package proxy: reverse proxy ke domain services memakai httputil.NewSingleHostReverseProxy (PRD 01 §8).
+// Package proxy: reverse proxy ke domain services memakai httputil.NewSingleHostReverseProxy (TRD 01 §8).
 package proxy
 
 import (

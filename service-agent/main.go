@@ -1,4 +1,4 @@
-// service-agent (:8000) — Google ADK (Go): Orchestrator + 2 sub-agent. Lihat docs/prd/06-SERVICE-AGENT.md
+// service-agent (:8000) — Google ADK (Go): Orchestrator + 2 sub-agent. Lihat docs/trd/06-SERVICE-AGENT.md
 package main
 
 import (

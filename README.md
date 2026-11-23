@@ -4,7 +4,7 @@ Toko elektronik & aksesoris berbasis **microservices** dengan **asisten AI multi
 
 Pelanggan bisa mengobrol dengan asisten untuk mencari produk ("mouse yang tidak bikin pergelangan pegal"), menanyakan kebijakan toko, membuat dan membayar pesanan, serta membuat tiket komplain. Semua aksi lewat jalur yang sama dengan antarmuka web, jadi aturan akses dan validasi tetap berlaku.
 
-> Spesifikasi lengkap ada di [`docs/prd/`](docs/prd/00-MASTER-PRD.md).
+> Kebutuhan produk ada di [`docs/prd/`](docs/prd/00-MASTER-PRD.md); spesifikasi teknis ada di [`docs/trd/`](docs/trd/00-MASTER-TRD.md).
 
 ## Daftar isi
 - [Fitur utama](#fitur-utama)
@@ -163,7 +163,8 @@ service-<nama>/internal/     # config, store, service, handlers / tools / agents
 service-<nama>/.env.example  # env milik service itu
 service-frontend/            # Nuxt 3 (Node ≥ 20)
 scripts/e2e/                 # tes end-to-end dengan binary sungguhan
-docs/prd/                    # spesifikasi per service
+docs/prd/                    # kebutuhan produk (PRD)
+docs/trd/                    # spesifikasi teknis per service (TRD)
 docker-compose.yml
 .env.example                 # env gabungan semua service
 ```
@@ -179,18 +180,32 @@ Kode di `internal/shared` disalin ke tahap build tiap service lalu di-compile ke
 - Isi hasil tool diperlakukan sebagai data, bukan instruksi, untuk mengurangi risiko prompt injection.
 
 ## Dokumentasi
-Spesifikasi per service ada di `docs/prd/`:
+Dokumentasi dipisah dua: **PRD** (`docs/prd/`, apa dan mengapa) dan **TRD** (`docs/trd/`, bagaimana).
+
+**PRD** — kebutuhan produk:
 
 | Dokumen | Isi |
 |---|---|
-| [`00-MASTER-PRD.md`](docs/prd/00-MASTER-PRD.md) | Gambaran umum, peran, kontrak API, variabel env |
-| [`01-SERVICE-GATEWAY.md`](docs/prd/01-SERVICE-GATEWAY.md) | Gateway |
-| [`02-SERVICE-CATALOG.md`](docs/prd/02-SERVICE-CATALOG.md) | Katalog dan pencarian semantik |
-| [`03-SERVICE-ORDER.md`](docs/prd/03-SERVICE-ORDER.md) | Pesanan |
-| [`04-SERVICE-TICKET.md`](docs/prd/04-SERVICE-TICKET.md) | Tiket dan knowledge base |
-| [`05-SERVICE-MCP.md`](docs/prd/05-SERVICE-MCP.md) | Tool MCP |
-| [`06-SERVICE-AGENT.md`](docs/prd/06-SERVICE-AGENT.md) | Agent dan guard |
-| [`07-SERVICE-FRONTEND.md`](docs/prd/07-SERVICE-FRONTEND.md) | Frontend |
+| [`00-MASTER-PRD.md`](docs/prd/00-MASTER-PRD.md) | Visi, pengguna, ruang lingkup, perjalanan, metrik |
+| [`01-AKUN-DAN-AKSES.md`](docs/prd/01-AKUN-DAN-AKSES.md) | Peran, masuk, hak akses |
+| [`02-KATALOG-DAN-PENCARIAN.md`](docs/prd/02-KATALOG-DAN-PENCARIAN.md) | Produk, stok, pencarian biasa dan AI |
+| [`03-PESANAN-DAN-PEMBAYARAN.md`](docs/prd/03-PESANAN-DAN-PEMBAYARAN.md) | Pesanan dan pembayaran |
+| [`04-TIKET-DAN-KEBIJAKAN.md`](docs/prd/04-TIKET-DAN-KEBIJAKAN.md) | Tiket dan Pusat Bantuan |
+| [`05-ASISTEN-AI.md`](docs/prd/05-ASISTEN-AI.md) | Perilaku asisten AI |
+| [`06-PENGALAMAN-PENGGUNA.md`](docs/prd/06-PENGALAMAN-PENGGUNA.md) | Halaman dan alur layar |
+
+**TRD** — spesifikasi teknis per service:
+
+| Dokumen | Isi |
+|---|---|
+| [`00-MASTER-TRD.md`](docs/trd/00-MASTER-TRD.md) | Arsitektur, kontrak API, variabel env |
+| [`01-SERVICE-GATEWAY.md`](docs/trd/01-SERVICE-GATEWAY.md) | Gateway |
+| [`02-SERVICE-CATALOG.md`](docs/trd/02-SERVICE-CATALOG.md) | Katalog dan pencarian semantik |
+| [`03-SERVICE-ORDER.md`](docs/trd/03-SERVICE-ORDER.md) | Pesanan |
+| [`04-SERVICE-TICKET.md`](docs/trd/04-SERVICE-TICKET.md) | Tiket dan knowledge base |
+| [`05-SERVICE-MCP.md`](docs/trd/05-SERVICE-MCP.md) | Tool MCP |
+| [`06-SERVICE-AGENT.md`](docs/trd/06-SERVICE-AGENT.md) | Agent dan guard |
+| [`07-SERVICE-FRONTEND.md`](docs/trd/07-SERVICE-FRONTEND.md) | Frontend |
 
 ## Batasan yang diketahui
 - Kualitas agent dengan **Gemini asli** baru diuji sebagian (2 skenario; kuota gratis habis). Rekomendasi semantik, alur tulis dua langkah (buat pesanan/tiket), dan kalibrasi `SEMANTIC_MIN_SCORE=0.55` dengan embedding asli masih perlu dicoba.

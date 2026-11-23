@@ -25,7 +25,7 @@ func docID(r *http.Request) (string, error) {
 	return id, nil
 }
 
-// searchKnowledge: GET /api/knowledge/search (PRD 04 §7.1) — terbuka untuk GUEST.
+// searchKnowledge: GET /api/knowledge/search (TRD 04 §7.1) — terbuka untuk GUEST.
 func (d *Deps) searchKnowledge(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if n := utf8.RuneCountInString(q); n < 3 || n > 300 {

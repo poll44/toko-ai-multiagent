@@ -1,4 +1,4 @@
-// Package service: logika tiket — validasi order, aturan lifecycle & otorisasi (PRD 04 §4, §6, §8).
+// Package service: logika tiket — validasi order, aturan lifecycle & otorisasi (TRD 04 §4, §6, §8).
 package service
 
 import (
@@ -133,7 +133,7 @@ const (
 	dev  = httputil.RoleAdminDev
 )
 
-// Siklus hidup & pelaku (PRD 04 §4). CLOSED final: tak ada edge keluar.
+// Siklus hidup & pelaku (TRD 04 §4). CLOSED final: tak ada edge keluar.
 var edges = map[edge][]string{
 	{model.StOpen, model.StInProgress}:     {adm, dev},
 	{model.StInProgress, model.StResolved}: {adm, dev},

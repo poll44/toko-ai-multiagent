@@ -1,4 +1,4 @@
-# 05 — PRD `service-mcp`
+# 05 — TRD `service-mcp`
 
 | Item | Nilai |
 |---|---|
@@ -9,7 +9,7 @@
 | Peran | Membungkus REST API **service Go** `catalog` (:4001), `order` (:4002), `ticket` (:4003) menjadi **17 MCP Tools**; meneruskan identitas user |
 | Pemanggil | `service-agent` (`MCP_URL=http://localhost:5000/mcp`) |
 | Kontrak upstream | Path `/api/...`, JSON `snake_case`, `{"data":...}`/`{"error":...}` — Master §7. MCP ditulis dalam Go dan memakai ulang `internal/shared` (`httputil`, `svcclient`, `config`) |
-| Rujukan | `00-MASTER-PRD.md` |
+| Rujukan | `00-MASTER-TRD.md` |
 
 ## 1. Prinsip
 1. **MCP tidak memiliki logika bisnis & tidak punya akses DB.** Setiap tool = 1 panggilan REST (atau komposisi sederhana).

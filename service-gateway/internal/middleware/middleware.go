@@ -1,4 +1,4 @@
-// Package middleware: middleware khusus Gateway (PRD 01 §7): CORS, sanitasi header, blokir /internal, JWT.
+// Package middleware: middleware khusus Gateway (TRD 01 §7): CORS, sanitasi header, blokir /internal, JWT.
 package middleware
 
 import (

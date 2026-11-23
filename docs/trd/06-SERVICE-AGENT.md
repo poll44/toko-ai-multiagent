@@ -1,4 +1,4 @@
-# 06 — PRD `service-agent`
+# 06 — TRD `service-agent`
 
 | Item | Nilai |
 |---|---|
@@ -9,10 +9,10 @@
 | Tools | via `service-mcp` (`MCP_URL=http://localhost:5000/mcp`) |
 | Pemanggil | **Hanya** `service-gateway` (Go; `/api/agent/**` → `AGENT_URL`, prefiks `/api/agent` dihapus, header `Origin` dihapus) |
 | Tools | 17 MCP Tools (`05-SERVICE-MCP.md`), termasuk `semantic_search_products` & `search_store_policy` |
-| Rujukan | `00-MASTER-PRD.md` (§7 konvensi JSON, §9 Vector & RAG), `05-SERVICE-MCP.md` |
+| Rujukan | `00-MASTER-TRD.md` (§7 konvensi JSON, §9 Vector & RAG), `05-SERVICE-MCP.md` |
 | Catatan kontrak | Payload protokol ADK (`appName`, `userId`, `newMessage`, …) camelCase; seluruh data toko dari tool tetap `snake_case` |
 
-> Catatan implementasi (diverifikasi lewat spike terhadap `google.golang.org/adk@v1.9.0`): kontrak REST ADK Go identik dengan yang diasumsikan PRD (`/run`, `/run_sse`, `/apps/{app}/users/{uid}/sessions[/{sid}]`, field camelCase `appName/userId/sessionId/newMessage/stateDelta`). `mcptoolset.Config` **tidak** punya header dinamis → dipakai `identityToolset` (toolset per identitas, §2.1). ADK Go juga memiliki origin guard (`AllowedOrigins`/`BindHost`), sehingga `stripBrowserOrigin` di Gateway tetap relevan.
+> Catatan implementasi (diverifikasi lewat spike terhadap `google.golang.org/adk@v1.9.0`): kontrak REST ADK Go identik dengan yang diasumsikan TRD (`/run`, `/run_sse`, `/apps/{app}/users/{uid}/sessions[/{sid}]`, field camelCase `appName/userId/sessionId/newMessage/stateDelta`). `mcptoolset.Config` **tidak** punya header dinamis → dipakai `identityToolset` (toolset per identitas, §2.1). ADK Go juga memiliki origin guard (`AllowedOrigins`/`BindHost`), sehingga `stripBrowserOrigin` di Gateway tetap relevan.
 
 ## 1. Arsitektur
 
@@ -70,7 +70,7 @@ Nama aplikasi ADK = nama folder = `toko_orchestrator` (dipakai di path `/apps/to
 Aturan:
 1. **Satu-satunya sumber identitas** adalah `session.state.user_id` & `user_role` (tidak pernah dari teks percakapan, tidak pernah dari argumen tool).
 2. Header `x-user-id`/`x-user-role` yang diteruskan Gateway ke ADK dipakai sebagai **cadangan/verifikasi**: bila ada callback/middleware, bandingkan dengan state; **bila tidak cocok → tolak** (`403`) — mencegah session milik user lain dipakai.
-3. Gateway menghapus `user_id`/`user_role` dari `stateDelta` klien (lihat Gateway PRD §9.2); agent juga **menolak** bila `stateDelta` memuat kunci tsb.
+3. Gateway menghapus `user_id`/`user_role` dari `stateDelta` klien (lihat Gateway TRD §9.2); agent juga **menolak** bila `stateDelta` memuat kunci tsb.
 4. Jika `user_id`/`user_role` tidak ada di state (session dibuat tanpa Gateway) → agent memperlakukan sebagai `GUEST`.
 5. Session dibuat per percakapan UI; `sessionId` format `s-<uuid>`; `userId` = `x-user-id` (GUEST memakai `GUEST`). Session `GUEST` dibagi nama userId sama namun `sessionId` unik per tab.
 

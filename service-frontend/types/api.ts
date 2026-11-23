@@ -1,4 +1,4 @@
-// Cermin kontrak backend Go (snake_case, null eksplisit, envelope {data}/{error}). Master PRD §7, Frontend PRD §6.
+// Cermin kontrak backend Go (snake_case, null eksplisit, envelope {data}/{error}). Master TRD §7, Frontend TRD §6.
 // Perubahan skema backend WAJIB disertai pembaruan file ini.
 
 export type Role = 'GUEST' | 'CUSTOMER' | 'ADMIN_SISTEM' | 'ADMIN_DEV'

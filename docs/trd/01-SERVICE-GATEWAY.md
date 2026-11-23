@@ -1,4 +1,4 @@
-# 01 — PRD `service-gateway`
+# 01 — TRD `service-gateway`
 
 | Item | Nilai |
 |---|---|
@@ -7,7 +7,7 @@
 | Library eksternal | `github.com/golang-jwt/jwt/v5`, `modernc.org/sqlite` (pure-Go, tanpa CGO) |
 | Database | `auth.db` (`AUTH_DB_PATH`) via `database/sql` |
 | Peran | Titik masuk tunggal: autentikasi, verifikasi JWT, injeksi header identitas, reverse proxy |
-| Rujukan | `00-MASTER-PRD.md` (konvensi JSON, header, RBAC, error, shared package) |
+| Rujukan | `00-MASTER-TRD.md` (konvensi JSON, header, RBAC, error, shared package) |
 
 ## 1. Tanggung Jawab
 1. Menyimpan user demo & memverifikasi kredensial (`/auth/login`).

@@ -1,4 +1,4 @@
-# 02 — PRD `service-catalog`
+# 02 — TRD `service-catalog`
 
 | Item | Nilai |
 |---|---|
@@ -7,7 +7,7 @@
 | Database | `catalog.db` (`CATALOG_DB_PATH`) |
 | Peran | Sumber kebenaran produk, harga, stok **+ indeks vektor untuk pencarian semantik** |
 | Dependensi eksternal | Gemini Embedding API (`EMBEDDING_MODEL`, default `text-embedding-004`) |
-| Rujukan | `00-MASTER-PRD.md` (konvensi JSON/error/header, shared package, §9 Vector & RAG) |
+| Rujukan | `00-MASTER-TRD.md` (konvensi JSON/error/header, shared package, §9 Vector & RAG) |
 
 ## 1. Struktur Kode
 ```

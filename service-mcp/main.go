@@ -1,4 +1,4 @@
-// service-mcp (:5000) — MCP Tools untuk catalog/order/ticket. Lihat docs/prd/05-SERVICE-MCP.md
+// service-mcp (:5000) — MCP Tools untuk catalog/order/ticket. Lihat docs/trd/05-SERVICE-MCP.md
 package main
 
 import (
@@ -21,7 +21,7 @@ import (
 
 var userIDRe = regexp.MustCompile(`^((USR|ADM|DEV)-\d{2,}|GUEST)$`)
 
-// strictUserID: format x-user-id harus dikenal (PRD 05 §2.1) selain validasi role oleh IdentityMiddleware.
+// strictUserID: format x-user-id harus dikenal (TRD 05 §2.1) selain validasi role oleh IdentityMiddleware.
 func strictUserID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !userIDRe.MatchString(httputil.IdentityFrom(r.Context()).UserID) {

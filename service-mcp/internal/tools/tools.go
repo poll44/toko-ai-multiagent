@@ -1,4 +1,4 @@
-// Package tools: 17 MCP Tools + pemetaan ke REST service Go (PRD 05 §3–§4).
+// Package tools: 17 MCP Tools + pemetaan ke REST service Go (TRD 05 §3–§4).
 // Identitas TIDAK pernah dari argumen tool; selalu dari header transport yang sudah divalidasi.
 package tools
 

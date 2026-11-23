@@ -1,4 +1,4 @@
-// service-ticket (:4003) — tiket komplain + knowledge base kebijakan (RAG). Lihat docs/prd/04-SERVICE-TICKET.md
+// service-ticket (:4003) — tiket komplain + knowledge base kebijakan (RAG). Lihat docs/trd/04-SERVICE-TICKET.md
 package main
 
 import (

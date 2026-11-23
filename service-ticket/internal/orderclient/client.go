@@ -1,4 +1,4 @@
-// Package orderclient: validasi kepemilikan order ke service-order (PRD 04 §6.1).
+// Package orderclient: validasi kepemilikan order ke service-order (TRD 04 §6.1).
 package orderclient
 
 import (

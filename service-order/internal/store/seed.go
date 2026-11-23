@@ -9,7 +9,7 @@ import (
 	"toko-ai-microservices/service-order/internal/model"
 )
 
-// Snapshot harga/nama sesuai seed katalog (PRD 02 §4).
+// Snapshot harga/nama sesuai seed katalog (TRD 02 §4).
 var catalogSnapshot = map[string]struct {
 	Name  string
 	Price int

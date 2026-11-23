@@ -1,4 +1,4 @@
-# 07 — PRD `service-frontend`
+# 07 — TRD `service-frontend`
 
 | Item | Nilai |
 |---|---|
@@ -7,7 +7,7 @@
 | Mode render | **SPA murni: `ssr: false` (global) di `nuxt.config.ts`** — tidak ada render server, tidak ada server routes/Nitro API |
 | Backend | **Hanya** `service-gateway` Go di `http://localhost:8080` (`NUXT_PUBLIC_API_BASE`), dipanggil **langsung dari browser** (CORS ditangani Gateway) |
 | Penyimpanan token | JWT di **`localStorage`** (kunci `toko_token`) |
-| Rujukan | `00-MASTER-PRD.md` (§7 konvensi JSON — wajib identik dengan backend Go) |
+| Rujukan | `00-MASTER-TRD.md` (§7 konvensi JSON — wajib identik dengan backend Go) |
 
 ## 1. Prinsip
 1. Tidak ada form login manual. Autentikasi lewat **RoleSwitcher** (klik akun demo → login otomatis dengan password demo `123456`).
@@ -110,7 +110,7 @@ Helper domain (tipis, tipe dari `types/api.ts`):
 | `products.list(q)` | `GET /api/products?...` |
 | `products.semanticSearch(q, opts)` | `GET /api/products/semantic-search?q=...&limit=5` |
 | `knowledge.search(q, opts)` | `GET /api/knowledge/search?q=...&limit=3` |
-| `orders.create/pay/cancel`, `tickets.create/...` | sesuai PRD 03/04 |
+| `orders.create/pay/cancel`, `tickets.create/...` | sesuai TRD 03/04 |
 
 ### 3.3 `composables/useChat.ts`
 ```ts

@@ -14,7 +14,7 @@ func roleProvider(tmpl string) func(agent.ReadonlyContext) (string, error) {
 	}
 }
 
-// System instruction (PRD 06 §3). Tidak memuat karakter kurung kurawal selain placeholder {user_role}.
+// System instruction (TRD 06 §3). Tidak memuat karakter kurung kurawal selain placeholder {user_role}.
 const orchestratorInstruction = `Kamu adalah "Asisten Toko AI", asisten resmi toko elektronik & aksesoris.
 Bahasa: Indonesia, sopan, ringkas, tidak bertele-tele.
 

@@ -1,4 +1,4 @@
-// Keranjang di localStorage['toko_cart'] (PRD 07 §2.1 /cart). Harga final selalu dihitung server saat checkout.
+// Keranjang di localStorage['toko_cart'] (TRD 07 §2.1 /cart). Harga final selalu dihitung server saat checkout.
 export interface CartItem { product_id: string; name: string; price: number; stock: number; quantity: number }
 const KEY = 'toko_cart'
 

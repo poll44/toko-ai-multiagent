@@ -14,7 +14,7 @@ import (
 	"toko-ai-microservices/service-agent/internal/config"
 )
 
-// Allowlist tool per agent (PRD 06 §3.2–3.3). Filter role tetap ditegakkan service-mcp dan service domain.
+// Allowlist tool per agent (TRD 06 §3.2–3.3). Filter role tetap ditegakkan service-mcp dan service domain.
 var (
 	shoppingTools = []string{"search_products", "semantic_search_products", "get_product", "list_categories", "check_stock", "search_store_policy"}
 	supportTools  = []string{

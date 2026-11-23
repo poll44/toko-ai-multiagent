@@ -1,4 +1,4 @@
-// Package model: tipe data service-ticket (JSON snake_case, PRD 04 §6–§7).
+// Package model: tipe data service-ticket (JSON snake_case, TRD 04 §6–§7).
 package model
 
 const (

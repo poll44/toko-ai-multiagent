@@ -1,4 +1,4 @@
-// service-gateway (:8080) — autentikasi JWT, injeksi header identitas, reverse proxy. Lihat docs/prd/01-SERVICE-GATEWAY.md
+// service-gateway (:8080) — autentikasi JWT, injeksi header identitas, reverse proxy. Lihat docs/trd/01-SERVICE-GATEWAY.md
 package main
 
 import (

@@ -1,4 +1,4 @@
-// Package knowledge: chunking, indexing embedding, dan pencarian kebijakan toko (RAG) — PRD 04 §3.2, §7.
+// Package knowledge: chunking, indexing embedding, dan pencarian kebijakan toko (RAG) — TRD 04 §3.2, §7.
 package knowledge
 
 import (

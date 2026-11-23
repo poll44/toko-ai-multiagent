@@ -1,4 +1,4 @@
-// Package catalogclient: HTTP client native ke service-catalog (PRD 03 §6.2).
+// Package catalogclient: HTTP client native ke service-catalog (TRD 03 §6.2).
 package catalogclient
 
 import (
