@@ -1,50 +1,52 @@
-package handlers_test
+package handlers_test // test black-box untuk handler service-order
 
-import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"path/filepath"
-	"strings"
-	"sync"
-	"testing"
-	"time"
+import ( // package yang dipakai
+	"context"           // context
+	"encoding/json"     // encode/decode JSON
+	"net/http"          // tipe HTTP
+	"net/http/httptest" // server uji
+	"path/filepath"     // path database sementara
+	"strings"           // utilitas string
+	"sync"              // mutex
+	"testing"           // framework test
+	"time"              // waktu
 
-	"toko-ai-microservices/service-order/internal/catalogclient"
-	"toko-ai-microservices/service-order/internal/handlers"
-	"toko-ai-microservices/service-order/internal/service"
-	"toko-ai-microservices/service-order/internal/store"
+	"toko-ai-microservices/service-order/internal/catalogclient" // klien catalog
+	"toko-ai-microservices/service-order/internal/handlers"      // paket yang diuji
+	"toko-ai-microservices/service-order/internal/service"       // logika bisnis
+	"toko-ai-microservices/service-order/internal/store"         // repository
 )
 
+// key: internal API key yang dipakai pada test.
 const key = "order-test-key"
 
 // fakeCatalog mensimulasikan kontrak /internal/stock/* service-catalog.
 type fakeCatalog struct {
-	mu       sync.Mutex
-	stock    map[string]int
-	price    map[string]int
-	restocks []string // "ORD-xxx:PRD-yyy:qty"
-	headers  []http.Header
-	down     bool
+	mu       sync.Mutex     // melindungi state
+	stock    map[string]int // stok per produk
+	price    map[string]int // harga per produk
+	restocks []string       // "ORD-xxx:PRD-yyy:qty"
+	headers  []http.Header  // header tiap request yang diterima
+	down     bool           // true = simulasi catalog mati
 }
 
+// newFakeCatalog menjalankan catalog palsu dengan stok & harga awal.
 func newFakeCatalog(t *testing.T) (*httptest.Server, *fakeCatalog) {
 	fc := &fakeCatalog{
-		stock: map[string]int{"PRD-002": 25, "PRD-003": 80, "PRD-004": 200, "PRD-012": 8},
-		price: map[string]int{"PRD-002": 799000, "PRD-003": 299000, "PRD-004": 89000, "PRD-012": 1299000},
+		stock: map[string]int{"PRD-002": 25, "PRD-003": 80, "PRD-004": 200, "PRD-012": 8},                 // stok awal
+		price: map[string]int{"PRD-002": 799000, "PRD-003": 299000, "PRD-004": 89000, "PRD-012": 1299000}, // harga
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fc.mu.Lock()
 		defer fc.mu.Unlock()
-		fc.headers = append(fc.headers, r.Header.Clone())
-		if fc.down {
+		fc.headers = append(fc.headers, r.Header.Clone()) // rekam header
+		if fc.down {                                      // simulasi koneksi terputus
 			hj, _ := w.(http.Hijacker)
 			c, _, _ := hj.Hijack()
 			c.Close()
 			return
 		}
-		var body struct {
+		var body struct { // payload yang diterima
 			ReferenceID string `json:"reference_id"`
 			Items       []struct {
 				ProductID string `json:"product_id"`
@@ -57,7 +59,7 @@ func newFakeCatalog(t *testing.T) (*httptest.Server, *fakeCatalog) {
 		case "/internal/stock/decrement":
 			// atomik: cek semua dulu
 			for _, it := range body.Items {
-				if fc.stock[it.ProductID] < it.Quantity {
+				if fc.stock[it.ProductID] < it.Quantity { // stok kurang => 409
 					w.WriteHeader(409)
 					_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
 						"code": "INSUFFICIENT_STOCK", "message": "Stok produk " + it.ProductID + " tidak mencukupi.",
@@ -66,13 +68,13 @@ func newFakeCatalog(t *testing.T) (*httptest.Server, *fakeCatalog) {
 				}
 			}
 			var items []map[string]any
-			for _, it := range body.Items {
+			for _, it := range body.Items { // kurangi stok & bentuk hasil
 				fc.stock[it.ProductID] -= it.Quantity
 				items = append(items, map[string]any{"product_id": it.ProductID, "name": "Produk " + it.ProductID, "unit_price": fc.price[it.ProductID], "quantity": it.Quantity, "stock_after": fc.stock[it.ProductID]})
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"reference_id": body.ReferenceID, "items": items}})
 		case "/internal/stock/restock":
-			for _, it := range body.Items {
+			for _, it := range body.Items { // kembalikan stok & catat
 				fc.stock[it.ProductID] += it.Quantity
 				fc.restocks = append(fc.restocks, body.ReferenceID+":"+it.ProductID)
 			}
@@ -85,54 +87,59 @@ func newFakeCatalog(t *testing.T) (*httptest.Server, *fakeCatalog) {
 	return srv, fc
 }
 
+// env: lingkungan uji (server HTTP + catalog palsu + service).
 type env struct {
-	srv *httptest.Server
-	fc  *fakeCatalog
-	svc *service.Service
-	now time.Time
+	srv *httptest.Server // server service-order
+	fc  *fakeCatalog     // catalog palsu
+	svc *service.Service // service (untuk mengatur jam & menjalankan job)
+	now time.Time        // waktu awal
 }
 
+// setup menyiapkan database sementara, seed, catalog palsu, dan server uji.
 func setup(t *testing.T) *env {
 	t.Helper()
 	ctx := context.Background()
-	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "order.db"))
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "order.db")) // database sementara
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
 	repo := store.NewRepo(db)
-	if err := repo.Seed(ctx); err != nil {
+	if err := repo.Seed(ctx); err != nil { // isi 8 pesanan contoh
 		t.Fatal(err)
 	}
 	cs, fc := newFakeCatalog(t)
-	svc := service.New(repo, catalogclient.New(cs.URL, key, 2*time.Second), 15*time.Minute)
+	svc := service.New(repo, catalogclient.New(cs.URL, key, 2*time.Second), 15*time.Minute) // service dengan TTL 15 menit
 	mux := http.NewServeMux()
-	handlers.Register(mux, key, &handlers.Deps{Svc: svc})
+	handlers.Register(mux, key, &handlers.Deps{Svc: svc}) // daftarkan rute
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return &env{srv: srv, fc: fc, svc: svc, now: time.Now()}
 }
 
+// resp: ringkasan respons HTTP.
 type resp struct {
-	Status int
-	Body   map[string]any
+	Status int            // status code
+	Body   map[string]any // body JSON
 }
 
+// users: pemetaan nama pelaku uji ke (id, role).
 var users = map[string][2]string{
 	"BUDI": {"USR-01", "CUSTOMER"}, "SITI": {"USR-02", "CUSTOMER"}, "ADMIN": {"ADM-01", "ADMIN_SISTEM"},
 	"DEV": {"DEV-01", "ADMIN_DEV"}, "GUEST": {"GUEST", "GUEST"},
 }
 
+// do mengirim request sebagai pelaku `who` ("NOKEY" = tanpa internal key).
 func (e *env) do(t *testing.T, who, method, path, body string) resp {
 	t.Helper()
 	req, _ := http.NewRequest(method, e.srv.URL+path, strings.NewReader(body))
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if who != "NOKEY" {
+	if who != "NOKEY" { // sertakan internal key
 		req.Header.Set("x-internal-api-key", key)
 	}
-	if u, ok := users[who]; ok {
+	if u, ok := users[who]; ok { // sertakan identitas
 		req.Header.Set("x-user-id", u[0])
 		req.Header.Set("x-user-role", u[1])
 	}
@@ -146,6 +153,7 @@ func (e *env) do(t *testing.T, who, method, path, body string) resp {
 	return resp{res.StatusCode, m}
 }
 
+// code mengambil kode error dari respons ("" bila bukan error).
 func code(r resp) string {
 	if e, ok := r.Body["error"].(map[string]any); ok {
 		return e["code"].(string)
@@ -153,8 +161,10 @@ func code(r resp) string {
 	return ""
 }
 
+// data mengambil objek "data" dari respons.
 func data(r resp) map[string]any { return r.Body["data"].(map[string]any) }
 
+// ids mengambil daftar field "id" dari data respons daftar.
 func ids(r resp) []string {
 	var out []string
 	for _, it := range r.Body["data"].([]any) {
@@ -163,8 +173,10 @@ func ids(r resp) []string {
 	return out
 }
 
+// newOrder: payload pesanan standar yang dipakai berulang.
 const newOrder = `{"items":[{"product_id":"PRD-003","quantity":1}],"payment_method":"EWALLET","shipping_address":"Jl. Merdeka No. 10, Jakarta"}`
 
+// TestAuthAndIsolation: autentikasi, isolasi data antar pelanggan, dan hak baca admin/dev.
 func TestAuthAndIsolation(t *testing.T) {
 	e := setup(t)
 	if r := e.do(t, "NOKEY", "GET", "/api/orders", ""); r.Status != 401 || code(r) != "INVALID_INTERNAL_KEY" {
@@ -179,7 +191,7 @@ func TestAuthAndIsolation(t *testing.T) {
 		t.Fatalf("Budi: %v", got)
 	}
 	for _, id := range got {
-		if id > "ORD-004" {
+		if id > "ORD-004" { // tidak boleh melihat pesanan orang lain
 			t.Fatalf("Budi melihat order milik orang lain: %v", got)
 		}
 	}
@@ -216,6 +228,7 @@ func TestAuthAndIsolation(t *testing.T) {
 	}
 }
 
+// TestCreateOrderFlow: pembuatan pesanan memakai harga katalog (bukan klien) dan memotong stok.
 func TestCreateOrderFlow(t *testing.T) {
 	e := setup(t)
 	// harga dari klien harus diabaikan; total dari katalog
@@ -228,14 +241,14 @@ func TestCreateOrderFlow(t *testing.T) {
 	if o["id"] != "ORD-009" || o["user_id"] != "USR-01" || o["status"] != "PENDING_PAYMENT" || o["payment_status"] != "UNPAID" {
 		t.Fatalf("order: %v", o)
 	}
-	if o["total_amount"].(float64) != 2*299000+89000 {
+	if o["total_amount"].(float64) != 2*299000+89000 { // total dari katalog
 		t.Fatalf("total harus dari katalog: %v", o["total_amount"])
 	}
 	exp, _ := time.Parse(time.RFC3339, o["payment_expires_at"].(string))
-	if d := time.Until(exp); d < 14*time.Minute || d > 16*time.Minute {
+	if d := time.Until(exp); d < 14*time.Minute || d > 16*time.Minute { // batas bayar ±15 menit
 		t.Fatalf("payment_expires_at ±15 menit: %v", d)
 	}
-	if e.fc.stock["PRD-003"] != 78 || e.fc.stock["PRD-004"] != 199 {
+	if e.fc.stock["PRD-003"] != 78 || e.fc.stock["PRD-004"] != 199 { // stok katalog berkurang
 		t.Fatalf("stok katalog: %v", e.fc.stock)
 	}
 	// header identitas asli diteruskan ke catalog
@@ -248,9 +261,10 @@ func TestCreateOrderFlow(t *testing.T) {
 	}
 }
 
+// TestCreateOrderErrors: validasi input, hak akses, dan kegagalan catalog saat membuat pesanan.
 func TestCreateOrderErrors(t *testing.T) {
 	e := setup(t)
-	before := len(ids(e.do(t, "ADMIN", "GET", "/api/orders?limit=100", "")))
+	before := len(ids(e.do(t, "ADMIN", "GET", "/api/orders?limit=100", ""))) // jumlah pesanan awal
 
 	// stok kurang => 409 dari catalog diteruskan, tidak ada order baru, stok utuh
 	r := e.do(t, "BUDI", "POST", "/api/orders", `{"items":[{"product_id":"PRD-012","quantity":9}],"payment_method":"EWALLET","shipping_address":"Jl. Merdeka No. 10, Jakarta"}`)
@@ -294,9 +308,10 @@ func TestCreateOrderErrors(t *testing.T) {
 	}
 }
 
+// TestPaymentSimulations: simulasi pembayaran sukses/gagal/timeout, restock, dan aturan pemilik.
 func TestPaymentSimulations(t *testing.T) {
 	e := setup(t)
-	mk := func() string {
+	mk := func() string { // pembuat pesanan baru, mengembalikan ID
 		return data(e.do(t, "BUDI", "POST", "/api/orders", newOrder))["id"].(string)
 	}
 	// success
@@ -351,11 +366,12 @@ func TestPaymentSimulations(t *testing.T) {
 	}
 }
 
+// TestPayAfterExpiry: membayar setelah batas waktu harus gagal dan pesanan menjadi PAYMENT_TIMEOUT + restock.
 func TestPayAfterExpiry(t *testing.T) {
 	e := setup(t)
 	id := data(e.do(t, "BUDI", "POST", "/api/orders", newOrder))["id"].(string)
 	stock := e.fc.stock["PRD-003"]
-	e.svc.SetClock(func() time.Time { return time.Now().Add(16 * time.Minute) })
+	e.svc.SetClock(func() time.Time { return time.Now().Add(16 * time.Minute) }) // majukan jam 16 menit
 	r := e.do(t, "BUDI", "POST", "/api/orders/"+id+"/pay", `{"simulate":"success"}`)
 	if r.Status != 409 || code(r) != "INVALID_STATE_TRANSITION" {
 		t.Fatalf("pay setelah kedaluwarsa: %d %s", r.Status, code(r))
@@ -366,6 +382,7 @@ func TestPayAfterExpiry(t *testing.T) {
 	}
 }
 
+// TestCancel: aturan pembatalan untuk pelanggan dan admin (termasuk refund & restock).
 func TestCancel(t *testing.T) {
 	e := setup(t)
 	id := data(e.do(t, "BUDI", "POST", "/api/orders", newOrder))["id"].(string)
@@ -398,11 +415,12 @@ func TestCancel(t *testing.T) {
 	}
 }
 
+// TestFulfilment: alur pemenuhan pesanan oleh admin (PROCESSING -> SHIPPED -> DELIVERED) dan batasannya.
 func TestFulfilment(t *testing.T) {
 	e := setup(t)
 	id := data(e.do(t, "BUDI", "POST", "/api/orders", newOrder))["id"].(string)
-	e.do(t, "BUDI", "POST", "/api/orders/"+id+"/pay", "")
-	patch := func(who, body string) resp { return e.do(t, who, "PATCH", "/api/orders/"+id+"/status", body) }
+	e.do(t, "BUDI", "POST", "/api/orders/"+id+"/pay", "")                                                    // bayar dulu
+	patch := func(who, body string) resp { return e.do(t, who, "PATCH", "/api/orders/"+id+"/status", body) } // pembantu PATCH status
 
 	if r := patch("BUDI", `{"status":"PROCESSING"}`); r.Status != 403 {
 		t.Fatalf("customer patch: %d", r.Status)
@@ -439,13 +457,14 @@ func TestFulfilment(t *testing.T) {
 	}
 }
 
+// TestExpiryJob: job kedaluwarsa menandai pesanan lewat batas, mengembalikan stok, dan idempoten.
 func TestExpiryJob(t *testing.T) {
 	e := setup(t)
 	// ORD-006 (Siti, PRD-002) kedaluwarsa 10 menit setelah seed
-	if n, err := e.svc.ExpireDue(context.Background()); err != nil || n != 0 {
+	if n, err := e.svc.ExpireDue(context.Background()); err != nil || n != 0 { // belum lewat batas
 		t.Fatalf("belum kedaluwarsa: n=%d err=%v", n, err)
 	}
-	e.svc.SetClock(func() time.Time { return time.Now().Add(11 * time.Minute) })
+	e.svc.SetClock(func() time.Time { return time.Now().Add(11 * time.Minute) }) // majukan jam 11 menit
 	stock := e.fc.stock["PRD-002"]
 	n, err := e.svc.ExpireDue(context.Background())
 	if err != nil || n != 1 {
@@ -456,7 +475,7 @@ func TestExpiryJob(t *testing.T) {
 		t.Fatalf("ORD-006: %v stok=%d want=%d", o, e.fc.stock["PRD-002"], stock+1)
 	}
 	h := o["history"].([]any)
-	if last := h[len(h)-1].(map[string]any); last["actor_id"] != "SYSTEM" || last["to_status"] != "PAYMENT_TIMEOUT" {
+	if last := h[len(h)-1].(map[string]any); last["actor_id"] != "SYSTEM" || last["to_status"] != "PAYMENT_TIMEOUT" { // dicatat oleh SYSTEM
 		t.Fatalf("history job: %v", last)
 	}
 	// idempoten

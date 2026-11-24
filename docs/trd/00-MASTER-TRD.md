@@ -347,7 +347,7 @@ Satu `.env.example` di root; tiap service membaca variabelnya (Go: `os.Getenv` v
 | `ORDER_PAYMENT_TTL_MINUTES` | `15` | order | |
 | `UPSTREAM_TIMEOUT_MS` | `10000` | gateway, order, ticket, mcp | |
 | `GOOGLE_API_KEY` | — | **agent (wajib)**; catalog & ticket (opsional, tanpa ini → `keyword_fallback`) | Kunci Gemini |
-| `AGENT_MODEL` | `gemini-flash-lite-latest` | agent | |
+| `AGENT_MODEL` | `gemini-3.1-flash-lite` | agent | |
 | `EMBEDDING_MODEL` | `text-embedding-004` | catalog, ticket | Harus configurable; lihat catatan risiko |
 | `EMBEDDING_DIM` | `768` | catalog, ticket | Harus sama dengan dimensi respons model |
 | `EMBEDDING_TIMEOUT_MS` | `5000` | catalog, ticket | |

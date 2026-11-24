@@ -4,7 +4,7 @@
 |---|---|
 | Port | `8000` (`AGENT_PORT`) |
 | Stack | **Go** + Google ADK (`google.golang.org/adk` v1.9): `llmagent`, `tool/mcptoolset`, `server/adkrest` (REST API) di-mount pada `net/http` sendiri |
-| Model | `AGENT_MODEL` (default `gemini-flash-lite-latest`), kunci `GOOGLE_API_KEY` |
+| Model | `AGENT_MODEL` (default `gemini-3.1-flash-lite`), kunci `GOOGLE_API_KEY` |
 | Session | `InMemorySessionService` (dev) |
 | Tools | via `service-mcp` (`MCP_URL=http://localhost:5000/mcp`) |
 | Pemanggil | **Hanya** `service-gateway` (Go; `/api/agent/**` → `AGENT_URL`, prefiks `/api/agent` dihapus, header `Origin` dihapus) |

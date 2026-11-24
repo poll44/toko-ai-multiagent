@@ -1,49 +1,59 @@
-package handlers_test
+package handlers_test // test black-box untuk handler service-catalog
 
-import (
-	"context"
-	"encoding/json"
-	"hash/fnv"
-	"net/http"
-	"net/http/httptest"
-	"path/filepath"
-	"regexp"
-	"strings"
-	"testing"
+import ( // package yang dipakai
+	"context"           // context
+	"encoding/json"     // decode body respons
+	"hash/fnv"          // hash kata untuk fake embedder
+	"net/http"          // tipe HTTP
+	"net/http/httptest" // server uji
+	"path/filepath"     // path database sementara
+	"regexp"            // pemecah kata
+	"strings"           // utilitas string
+	"testing"           // framework test
 
-	"toko-ai-microservices/internal/shared/embedding"
-	"toko-ai-microservices/internal/shared/vector"
-	"toko-ai-microservices/service-catalog/internal/handlers"
-	"toko-ai-microservices/service-catalog/internal/semantic"
-	"toko-ai-microservices/service-catalog/internal/store"
+	"toko-ai-microservices/internal/shared/embedding"         // tipe Task & ErrUnavailable
+	"toko-ai-microservices/internal/shared/vector"            // normalisasi vektor
+	"toko-ai-microservices/service-catalog/internal/handlers" // paket yang diuji
+	"toko-ai-microservices/service-catalog/internal/semantic" // indexer
+	"toko-ai-microservices/service-catalog/internal/store"    // repository
 )
 
+// key: internal API key yang dipakai pada test.
 const key = "test-key"
 
 // fakeEmbedder: bag-of-words hashing 1024 dimensi — deterministik, tanpa jaringan.
 type fakeEmbedder struct{ enabled bool }
 
-var wordRe = regexp.MustCompile(`[a-z0-9]+`)
-var stop = map[string]bool{"yang": true, "tidak": true, "dan": true, "untuk": true, "dengan": true, "nama": true, "kategori": true, "deskripsi": true, "spesifikasi": true}
+var wordRe = regexp.MustCompile(`[a-z0-9]+`)                                                                                                                                // pemecah kata
+var stop = map[string]bool{"yang": true, "tidak": true, "dan": true, "untuk": true, "dengan": true, "nama": true, "kategori": true, "deskripsi": true, "spesifikasi": true} // kata yang diabaikan
 
+// Enabled: apakah embedder aktif.
 func (f fakeEmbedder) Enabled() bool { return f.enabled }
+
+// Model: nama model palsu.
 func (f fakeEmbedder) Model() string { return "fake-bow" }
-func (f fakeEmbedder) Dim() int      { return 1024 }
+
+// Dim: dimensi vektor palsu.
+func (f fakeEmbedder) Dim() int { return 1024 }
+
+// Embed membuat vektor dengan menghitung hash tiap kata ke 1024 slot, lalu menormalkannya.
 func (f fakeEmbedder) Embed(_ context.Context, text string, _ embedding.Task) ([]float32, error) {
-	if !f.enabled {
+	if !f.enabled { // embedding mati
 		return nil, embedding.ErrUnavailable
 	}
 	v := make([]float32, 1024)
-	for _, w := range wordRe.FindAllString(strings.ToLower(text), -1) {
-		if stop[w] {
+	for _, w := range wordRe.FindAllString(strings.ToLower(text), -1) { // tiap kata
+		if stop[w] { // lewati stopword
 			continue
 		}
 		h := fnv.New32a()
 		h.Write([]byte(w))
-		v[h.Sum32()%1024]++
+		v[h.Sum32()%1024]++ // tambah hitungan di slot hasil hash
 	}
 	return vector.Normalize(v), nil
 }
+
+// EmbedBatch meng-embed banyak teks satu per satu.
 func (f fakeEmbedder) EmbedBatch(ctx context.Context, texts []string, t embedding.Task) ([][]float32, error) {
 	out := make([][]float32, len(texts))
 	for i, s := range texts {
@@ -56,42 +66,46 @@ func (f fakeEmbedder) EmbedBatch(ctx context.Context, texts []string, t embeddin
 	return out, nil
 }
 
+// env: lingkungan uji (server HTTP + indexer).
 type env struct {
-	srv *httptest.Server
-	ix  *semantic.Indexer
+	srv *httptest.Server  // server uji
+	ix  *semantic.Indexer // indexer
 }
 
+// setup menyiapkan database sementara, seed, indexer, dan server uji.
 func setup(t *testing.T, embEnabled bool) *env {
 	t.Helper()
 	ctx := context.Background()
-	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "catalog.db"))
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "catalog.db")) // database sementara
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
 	repo := store.NewRepo(db)
-	if err := repo.Seed(ctx); err != nil {
+	if err := repo.Seed(ctx); err != nil { // isi produk awal
 		t.Fatal(err)
 	}
 	ix := semantic.New(repo, fakeEmbedder{enabled: embEnabled})
-	if embEnabled {
+	if embEnabled { // indeks semua produk
 		if _, err := ix.IndexPending(ctx, false, 0); err != nil {
 			t.Fatal(err)
 		}
 	}
 	mux := http.NewServeMux()
-	handlers.Register(mux, key, &handlers.Deps{Repo: repo, Index: ix, MinScore: 0.05})
+	handlers.Register(mux, key, &handlers.Deps{Repo: repo, Index: ix, MinScore: 0.05}) // daftarkan rute
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return &env{srv: srv, ix: ix}
 }
 
+// resp: ringkasan respons HTTP.
 type resp struct {
-	Status int
-	Body   map[string]any
-	Header http.Header
+	Status int            // status code
+	Body   map[string]any // body JSON
+	Header http.Header    // header respons
 }
 
+// do mengirim request dengan identitas role tertentu ("NOKEY" = tanpa internal key) dan header tambahan.
 func (e *env) do(t *testing.T, method, path, role, body string, hdr ...string) resp {
 	t.Helper()
 	var rd *strings.Reader
@@ -104,15 +118,15 @@ func (e *env) do(t *testing.T, method, path, role, body string, hdr ...string) r
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if role != "NOKEY" {
+	if role != "NOKEY" { // sertakan internal key
 		req.Header.Set("x-internal-api-key", key)
 	}
-	ids := map[string]string{"GUEST": "GUEST", "CUSTOMER": "USR-01", "ADMIN_SISTEM": "ADM-01", "ADMIN_DEV": "DEV-01"}
+	ids := map[string]string{"GUEST": "GUEST", "CUSTOMER": "USR-01", "ADMIN_SISTEM": "ADM-01", "ADMIN_DEV": "DEV-01"} // id per role
 	if id, ok := ids[role]; ok {
 		req.Header.Set("x-user-id", id)
 		req.Header.Set("x-user-role", role)
 	}
-	for i := 0; i+1 < len(hdr); i += 2 {
+	for i := 0; i+1 < len(hdr); i += 2 { // header tambahan (pasangan nama, nilai)
 		req.Header.Set(hdr[i], hdr[i+1])
 	}
 	res, err := http.DefaultClient.Do(req)
@@ -125,6 +139,7 @@ func (e *env) do(t *testing.T, method, path, role, body string, hdr ...string) r
 	return resp{res.StatusCode, m, res.Header}
 }
 
+// ids mengambil daftar field "id" dari data respons.
 func ids(r resp) []string {
 	var out []string
 	for _, it := range r.Body["data"].([]any) {
@@ -133,6 +148,7 @@ func ids(r resp) []string {
 	return out
 }
 
+// code mengambil kode error dari respons ("" bila bukan error).
 func code(r resp) string {
 	if e, ok := r.Body["error"].(map[string]any); ok {
 		return e["code"].(string)
@@ -140,11 +156,13 @@ func code(r resp) string {
 	return ""
 }
 
+// stockOf mengambil stok terkini produk id.
 func stockOf(t *testing.T, e *env, id string) float64 {
 	r := e.do(t, "GET", "/api/products/"+id, "GUEST", "")
 	return r.Body["data"].(map[string]any)["stock"].(float64)
 }
 
+// TestInternalKeyAndHealth: internal key wajib (kecuali /health) dan identitas wajib valid.
 func TestInternalKeyAndHealth(t *testing.T) {
 	e := setup(t, false)
 	if r := e.do(t, "GET", "/api/products", "NOKEY", ""); r.Status != 401 || code(r) != "INVALID_INTERNAL_KEY" {
@@ -158,6 +176,7 @@ func TestInternalKeyAndHealth(t *testing.T) {
 	}
 }
 
+// TestListAndExactSearch: daftar produk, pencarian eksak, escape LIKE, dan visibilitas produk nonaktif.
 func TestListAndExactSearch(t *testing.T) {
 	e := setup(t, false)
 	r := e.do(t, "GET", "/api/products?limit=100", "GUEST", "")
@@ -195,6 +214,7 @@ func TestListAndExactSearch(t *testing.T) {
 	}
 }
 
+// TestSemanticSearch: pencarian semantik mengurutkan berdasar makna, menyaring, dan memvalidasi input.
 func TestSemanticSearch(t *testing.T) {
 	e := setup(t, true)
 	q := "/api/products/semantic-search?q=" + strings.ReplaceAll("mouse yang tidak bikin pergelangan pegal", " ", "%20")
@@ -203,7 +223,7 @@ func TestSemanticSearch(t *testing.T) {
 		t.Fatalf("status %d: %v", r.Status, r.Body)
 	}
 	got := ids(r)
-	if len(got) == 0 || got[0] != "PRD-014" {
+	if len(got) == 0 || got[0] != "PRD-014" { // PRD-014 harus peringkat 1
 		t.Fatalf("PRD-014 harus peringkat 1, dapat %v", got)
 	}
 	meta := r.Body["meta"].(map[string]any)
@@ -211,11 +231,11 @@ func TestSemanticSearch(t *testing.T) {
 		t.Fatalf("mode: %v", meta["mode"])
 	}
 	first := r.Body["data"].([]any)[0].(map[string]any)
-	if first["score"] == nil || first["stock"] == nil {
+	if first["score"] == nil || first["stock"] == nil { // skor & stok segar
 		t.Fatalf("score & stok segar harus ada: %v", first)
 	}
 	for _, id := range got {
-		if id == "PRD-013" {
+		if id == "PRD-013" { // nonaktif tidak boleh muncul
 			t.Fatal("produk nonaktif tidak boleh muncul")
 		}
 	}
@@ -240,6 +260,7 @@ func TestSemanticSearch(t *testing.T) {
 	}
 }
 
+// TestSemanticKeywordFallback: tanpa embedding, pencarian jatuh ke keyword_fallback dengan skor null.
 func TestSemanticKeywordFallback(t *testing.T) {
 	e := setup(t, false) // embedding mati
 	r := e.do(t, "GET", "/api/products/semantic-search?q=mouse%20pergelangan", "GUEST", "")
@@ -260,6 +281,7 @@ func TestSemanticKeywordFallback(t *testing.T) {
 	}
 }
 
+// TestRBACAndCRUD: hak akses per role serta alur create/update/delete/stok.
 func TestRBACAndCRUD(t *testing.T) {
 	e := setup(t, true)
 	body := `{"name":"Mouse Gaming Z1","description":"Mouse gaming ringan","specifications":"DPI 16000","category":"komputer","price":259000,"stock":12}`
@@ -314,9 +336,10 @@ func TestRBACAndCRUD(t *testing.T) {
 	}
 }
 
+// TestInternalStock: endpoint internal decrement/restock (atomik, idempoten, hanya service-order).
 func TestInternalStock(t *testing.T) {
 	e := setup(t, false)
-	order := []string{"x-service-name", "service-order"}
+	order := []string{"x-service-name", "service-order"} // header pemanggil yang berwenang
 	dec := `{"reference_id":"ORD-100","items":[{"product_id":"PRD-003","quantity":1},{"product_id":"PRD-004","quantity":2}]}`
 
 	if r := e.do(t, "POST", "/internal/stock/decrement", "CUSTOMER", dec); r.Status != 403 {
@@ -327,7 +350,7 @@ func TestInternalStock(t *testing.T) {
 		t.Fatalf("decrement: %d %v", r.Status, r.Body)
 	}
 	it := r.Body["data"].(map[string]any)["items"].([]any)[0].(map[string]any)
-	if it["unit_price"].(float64) != 299000 || it["stock_after"].(float64) != 79 {
+	if it["unit_price"].(float64) != 299000 || it["stock_after"].(float64) != 79 { // snapshot harga & stok
 		t.Fatalf("snapshot harga/stok: %v", it)
 	}
 	if stockOf(t, e, "PRD-004") != 198 {
@@ -365,7 +388,7 @@ func TestInternalStock(t *testing.T) {
 		t.Fatalf("restock pertama: %d %v", r.Status, r.Body)
 	}
 	r = e.do(t, "POST", "/internal/stock/restock", "CUSTOMER", rs, order...)
-	if r.Body["data"].(map[string]any)["restocked"] != false {
+	if r.Body["data"].(map[string]any)["restocked"] != false { // kedua kali no-op
 		t.Fatalf("restock kedua harus no-op: %v", r.Body)
 	}
 	if stockOf(t, e, "PRD-003") != 80 || stockOf(t, e, "PRD-004") != 200 {
@@ -373,6 +396,7 @@ func TestInternalStock(t *testing.T) {
 	}
 }
 
+// TestReindex: reindex hanya ADMIN_SISTEM, mengantrekan 14 produk, dan 503 bila embedding mati.
 func TestReindex(t *testing.T) {
 	e := setup(t, true)
 	if r := e.do(t, "POST", "/api/products/reindex", "CUSTOMER", ""); r.Status != 403 {
@@ -382,7 +406,7 @@ func TestReindex(t *testing.T) {
 	if r.Status != 202 || r.Body["data"].(map[string]any)["queued"].(float64) != 14 {
 		t.Fatalf("reindex: %d %v", r.Status, r.Body)
 	}
-	e2 := setup(t, false)
+	e2 := setup(t, false) // embedding mati
 	if r := e2.do(t, "POST", "/api/products/reindex", "ADMIN_SISTEM", ""); r.Status != 503 || code(r) != "EMBEDDING_UNAVAILABLE" {
 		t.Fatalf("reindex tanpa embedding: %d %s", r.Status, code(r))
 	}

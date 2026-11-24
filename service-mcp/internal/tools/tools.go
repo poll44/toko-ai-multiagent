@@ -1,46 +1,50 @@
 // Package tools: 17 MCP Tools + pemetaan ke REST service Go (TRD 05 §3–§4).
 // Identitas TIDAK pernah dari argumen tool; selalu dari header transport yang sudah divalidasi.
-package tools
+package tools // nama package: tools
 
-import (
-	"context"
-	"encoding/json"
-	"net/url"
-	"slices"
-	"strconv"
+import ( // package yang dipakai
+	"context"       // context
+	"encoding/json" // decode hasil upstream
+	"net/url"       // query string & escape path
+	"slices"        // slices.Contains
+	"strconv"       // konversi angka ke string
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp" // SDK MCP
 
-	"toko-ai-microservices/internal/shared/httputil"
-	"toko-ai-microservices/internal/shared/svcclient"
+	"toko-ai-microservices/internal/shared/httputil"  // identitas & role
+	"toko-ai-microservices/internal/shared/svcclient" // klien service-ke-service
 )
 
 // Clients: klien REST per service (membawa x-internal-api-key, x-service-name: service-mcp).
 type Clients struct{ Catalog, Order, Ticket *svcclient.Client }
 
+// args: argumen tool hasil decode JSON.
 type args = map[string]any
 
 // def: satu tool. Run mengembalikan status + body JSON upstream apa adanya.
 type def struct {
-	Name, Description string
-	Roles             []string
-	Schema            m
-	Run               func(ctx context.Context, c *Clients, a args) (int, []byte)
+	Name, Description string                                                      // nama & deskripsi tool (dibaca LLM)
+	Roles             []string                                                    // role yang boleh melihat/memakai tool
+	Schema            m                                                           // JSON Schema argumen
+	Run               func(ctx context.Context, c *Clients, a args) (int, []byte) // eksekusi tool ke service domain
 }
 
+// Kelompok role yang dipakai pada definisi tool.
 var (
-	all      = []string{httputil.RoleGuest, httputil.RoleCustomer, httputil.RoleAdminSistem, httputil.RoleAdminDev}
-	customer = []string{httputil.RoleCustomer}
-	signedIn = []string{httputil.RoleCustomer, httputil.RoleAdminSistem, httputil.RoleAdminDev}
-	admin    = []string{httputil.RoleAdminSistem}
+	all      = []string{httputil.RoleGuest, httputil.RoleCustomer, httputil.RoleAdminSistem, httputil.RoleAdminDev} // semua role termasuk tamu
+	customer = []string{httputil.RoleCustomer}                                                                      // hanya pelanggan
+	signedIn = []string{httputil.RoleCustomer, httputil.RoleAdminSistem, httputil.RoleAdminDev}                     // semua yang sudah login
+	admin    = []string{httputil.RoleAdminSistem}                                                                   // hanya admin sistem
 )
 
 // ---- util argumen ----
 
+// str mengambil argumen string k ("" bila tidak ada / bukan string).
 func str(a args, k string) string { s, _ := a[k].(string); return s }
 
+// num mengambil argumen angka k sebagai int; ok=false bila tidak ada / bukan angka.
 func num(a args, k string) (int, bool) {
-	switch v := a[k].(type) {
+	switch v := a[k].(type) { // JSON bisa terdecode sebagai float64/int/json.Number
 	case float64:
 		return int(v), true
 	case int:
@@ -52,26 +56,27 @@ func num(a args, k string) (int, bool) {
 	return 0, false
 }
 
+// boolean mengambil argumen boolean k; ok=false bila tidak ada / bukan boolean.
 func boolean(a args, k string) (bool, bool) { b, ok := a[k].(bool); return b, ok }
 
 // qs membangun query string dari argumen (nilai kosong dilewati). Pasangan: nama query, nilai.
 func qs(kv ...any) string {
-	v := url.Values{}
-	for i := 0; i+1 < len(kv); i += 2 {
-		k := kv[i].(string)
+	v := url.Values{}                   // penampung query
+	for i := 0; i+1 < len(kv); i += 2 { // proses pasangan (nama, nilai)
+		k := kv[i].(string) // nama query
 		switch x := kv[i+1].(type) {
-		case string:
+		case string: // string non-kosong saja
 			if x != "" {
 				v.Set(k, x)
 			}
-		case int:
+		case int: // angka
 			v.Set(k, strconv.Itoa(x))
-		case bool:
+		case bool: // boolean
 			v.Set(k, strconv.FormatBool(x))
-		case nil:
+		case nil: // tidak ada nilai: lewati
 		}
 	}
-	if len(v) == 0 {
+	if len(v) == 0 { // tidak ada query
 		return ""
 	}
 	return "?" + v.Encode()
@@ -94,14 +99,16 @@ func opt(a args, k string) any {
 
 // ---- definisi tool ----
 
+// definitions mengembalikan semua definisi tool (nama, deskripsi, role, skema, dan cara eksekusi).
 func definitions() []def {
-	pid := strSchema(0, 0, productIDPattern)
-	oid := strSchema(0, 0, orderIDPattern)
-	tid := strSchema(0, 0, ticketIDPattern)
-	cat := enumSchema(categories...)
+	pid := strSchema(0, 0, productIDPattern) // skema ID produk
+	oid := strSchema(0, 0, orderIDPattern)   // skema ID pesanan
+	tid := strSchema(0, 0, ticketIDPattern)  // skema ID tiket
+	cat := enumSchema(categories...)         // skema kategori produk
 
 	return []def{
 		// ───── Catalog ─────
+		// Tool search_products
 		{
 			Name: "search_products", Roles: all,
 			Description: "Pencarian EKSAK produk: kata kunci literal (nama/merek), kategori, rentang harga, urutan. Gunakan bila pengguna menyebut nama produk, kata kunci jelas, atau filter harga/kategori. Untuk kebutuhan/keluhan/deskripsi bebas gunakan semantic_search_products.",
@@ -111,12 +118,13 @@ func definitions() []def {
 				"in_stock_only": boolSchema(), "sort": enumSchema("name", "price_asc", "price_desc", "newest"),
 				"limit": intDefault(1, 20, 10),
 			}),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Catalog.DoRaw(ctx, "GET", "/api/products"+qs("q", opt(a, "query"), "category", opt(a, "category"),
 					"min_price", opt(a, "min_price"), "max_price", opt(a, "max_price"), "in_stock", opt(a, "in_stock_only"),
 					"sort", opt(a, "sort"), "limit", opt(a, "limit")), nil)
 			},
 		},
+		// Tool semantic_search_products
 		{
 			Name: "semantic_search_products", Roles: all,
 			Description: "Pencarian SEMANTIK produk berdasarkan makna kebutuhan, keluhan, atau skenario pemakaian dalam bahasa natural (mis. 'mouse yang tidak bikin pergelangan pegal', 'headphone untuk di kereta yang berisik'). Hasil diurutkan berdasarkan kemiripan (score 0–1). Gunakan bila pengguna TIDAK menyebut nama/ID/filter eksak. Setelah itu verifikasi stok/harga dengan check_stock atau get_product sebelum menawarkan.",
@@ -125,70 +133,76 @@ func definitions() []def {
 				"max_price": intSchema(0, 1_000_000_000), "min_price": intSchema(0, 1_000_000_000),
 				"in_stock_only": boolSchema(), "limit": intDefault(1, 10, 5),
 			}, "query"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Catalog.DoRaw(ctx, "GET", "/api/products/semantic-search"+qs("q", opt(a, "query"), "category", opt(a, "category"),
 					"max_price", opt(a, "max_price"), "min_price", opt(a, "min_price"), "in_stock", opt(a, "in_stock_only"),
 					"limit", opt(a, "limit")), nil)
 			},
 		},
+		// Tool get_product
 		{
 			Name: "get_product", Roles: all, Description: "Ambil detail satu produk berdasarkan ID (mis. PRD-003).",
 			Schema: object(m{"product_id": pid}, "product_id"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Catalog.DoRaw(ctx, "GET", "/api/products/"+url.PathEscape(str(a, "product_id")), nil)
 			},
 		},
+		// Tool list_categories
 		{
 			Name: "list_categories", Roles: all, Description: "Daftar kategori produk beserta jumlah produknya.",
 			Schema: object(m{}),
-			Run: func(ctx context.Context, c *Clients, _ args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, _ args) (int, []byte) { // eksekusi tool (tanpa argumen)
 				return c.Catalog.DoRaw(ctx, "GET", "/api/products/categories", nil)
 			},
 		},
+		// Tool check_stock
 		{
 			Name: "check_stock", Roles: all, Description: "Cek ketersediaan stok satu produk (stok, stock_status, harga terkini).",
 			Schema: object(m{"product_id": pid}, "product_id"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
-				st, body := c.Catalog.DoRaw(ctx, "GET", "/api/products/"+url.PathEscape(str(a, "product_id")), nil)
-				if st >= 400 {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
+				st, body := c.Catalog.DoRaw(ctx, "GET", "/api/products/"+url.PathEscape(str(a, "product_id")), nil) // ambil detail produk
+				if st >= 400 {                                                                                      // error diteruskan apa adanya
 					return st, body
 				}
-				var env struct {
+				var env struct { // amplop {"data": ...}
 					Data map[string]any `json:"data"`
 				}
-				if err := json.Unmarshal(body, &env); err != nil || env.Data == nil {
+				if err := json.Unmarshal(body, &env); err != nil || env.Data == nil { // bentuk tak dikenal: teruskan
 					return st, body
 				}
-				out := map[string]any{}
+				out := map[string]any{} // hanya field terkait stok
 				for _, k := range []string{"id", "name", "stock", "stock_status", "price"} {
 					out[k] = env.Data[k]
 				}
-				b, _ := json.Marshal(map[string]any{"data": out})
+				b, _ := json.Marshal(map[string]any{"data": out}) // bungkus kembali
 				return st, b
 			},
 		},
+		// Tool adjust_product_stock
 		{
 			Name: "adjust_product_stock", Roles: admin, Description: "(Admin) Atur stok produk: mode 'set' (stok = value) atau 'adjust' (stok += value).",
 			Schema: object(m{"product_id": pid, "mode": enumSchema("set", "adjust"), "value": m{"type": "integer"}, "note": strSchema(0, 200, "")},
 				"product_id", "mode", "value"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
-				v, _ := num(a, "value")
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
+				v, _ := num(a, "value") // nilai stok
 				return c.Catalog.DoRaw(ctx, "PATCH", "/api/products/"+url.PathEscape(str(a, "product_id"))+"/stock",
 					m{"mode": str(a, "mode"), "value": v, "note": str(a, "note")})
 			},
 		},
 
 		// ───── Knowledge base (service-ticket) ─────
+		// Tool search_store_policy
 		{
 			Name: "search_store_policy", Roles: all,
 			Description: "Cari kebijakan/FAQ/SOP resmi toko (retur, garansi, estimasi pengiriman, pembayaran gagal/kedaluwarsa, pembatalan, refund, prosedur komplain, jam layanan) secara semantik. WAJIB dipanggil sebelum menjawab pertanyaan kebijakan dan sebelum memutuskan membuat tiket untuk hal yang mungkin sudah diatur kebijakan. Jawab hanya berdasarkan hasil; jika kosong, katakan tidak ada informasi.",
 			Schema:      object(m{"query": strSchema(3, 300, ""), "category": enumSchema(kbCategories...), "limit": intDefault(1, 5, 3)}, "query"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Ticket.DoRaw(ctx, "GET", "/api/knowledge/search"+qs("q", opt(a, "query"), "category", opt(a, "category"), "limit", opt(a, "limit")), nil)
 			},
 		},
 
 		// ───── Order ─────
+		// Tool create_order
 		{
 			Name: "create_order", Roles: customer,
 			Description: "Buat pesanan baru. HANYA panggil setelah pelanggan secara eksplisit mengonfirmasi produk, jumlah, metode pembayaran, dan alamat.",
@@ -198,41 +212,46 @@ func definitions() []def {
 				"shipping_address":  strSchema(10, 300, ""),
 				"confirmed_by_user": constTrue(),
 			}, "items", "payment_method", "shipping_address", "confirmed_by_user"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Order.DoRaw(ctx, "POST", "/api/orders",
 					m{"items": a["items"], "payment_method": a["payment_method"], "shipping_address": a["shipping_address"]})
 			},
 		},
+		// Tool list_my_orders
 		{
 			Name: "list_my_orders", Roles: signedIn, Description: "Daftar pesanan milik user yang sedang login (admin: semua).",
 			Schema: object(m{"status": enumSchema(orderStatuses...), "limit": intDefault(1, 20, 10)}),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Order.DoRaw(ctx, "GET", "/api/orders"+qs("status", opt(a, "status"), "limit", opt(a, "limit")), nil)
 			},
 		},
+		// Tool get_order
 		{
 			Name: "get_order", Roles: signedIn, Description: "Detail pesanan: status, status pembayaran, alasan gagal (failure_reason), resi, item.",
 			Schema: object(m{"order_id": oid}, "order_id"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Order.DoRaw(ctx, "GET", "/api/orders/"+url.PathEscape(str(a, "order_id")), nil)
 			},
 		},
+		// Tool pay_order
 		{
 			Name: "pay_order", Roles: customer, Description: "Proses pembayaran (simulasi sukses) untuk pesanan PENDING_PAYMENT milik user. Butuh konfirmasi eksplisit.",
 			Schema: object(m{"order_id": oid, "confirmed_by_user": constTrue()}, "order_id", "confirmed_by_user"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Order.DoRaw(ctx, "POST", "/api/orders/"+url.PathEscape(str(a, "order_id"))+"/pay", m{"simulate": "success"})
 			},
 		},
+		// Tool cancel_order
 		{
 			Name: "cancel_order", Roles: customer, Description: "Batalkan pesanan PENDING_PAYMENT milik user. Butuh konfirmasi eksplisit.",
 			Schema: object(m{"order_id": oid, "reason": strSchema(0, 200, ""), "confirmed_by_user": constTrue()}, "order_id", "confirmed_by_user"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Order.DoRaw(ctx, "POST", "/api/orders/"+url.PathEscape(str(a, "order_id"))+"/cancel", m{"reason": str(a, "reason")})
 			},
 		},
 
 		// ───── Ticket ─────
+		// Tool create_ticket
 		{
 			Name: "create_ticket", Roles: customer, Description: "Buat tiket komplain/bantuan. Panggil setelah pelanggan mengonfirmasi ringkasan tiket.",
 			Schema: object(m{
@@ -242,46 +261,50 @@ func definitions() []def {
 				"order_id":          oid,
 				"confirmed_by_user": constTrue(),
 			}, "subject", "description", "category", "confirmed_by_user"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
-				body := m{"subject": a["subject"], "description": a["description"], "category": a["category"], "priority": a["priority"]}
-				if v := str(a, "order_id"); v != "" {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
+				body := m{"subject": a["subject"], "description": a["description"], "category": a["category"], "priority": a["priority"]} // payload dasar
+				if v := str(a, "order_id"); v != "" {                                                                                     // order_id opsional
 					body["order_id"] = v
 				}
 				return c.Ticket.DoRaw(ctx, "POST", "/api/tickets", body)
 			},
 		},
+		// Tool list_my_tickets
 		{
 			Name: "list_my_tickets", Roles: signedIn, Description: "Daftar tiket milik user yang sedang login (admin: semua).",
 			Schema: object(m{"status": enumSchema(ticketStates...), "order_id": oid, "limit": intDefault(1, 20, 10)}),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Ticket.DoRaw(ctx, "GET", "/api/tickets"+qs("status", opt(a, "status"), "order_id", opt(a, "order_id"), "limit", opt(a, "limit")), nil)
 			},
 		},
+		// Tool get_ticket
 		{
 			Name: "get_ticket", Roles: signedIn, Description: "Detail tiket beserta percakapan dan riwayat status.",
 			Schema: object(m{"ticket_id": tid}, "ticket_id"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Ticket.DoRaw(ctx, "GET", "/api/tickets/"+url.PathEscape(str(a, "ticket_id")), nil)
 			},
 		},
+		// Tool add_ticket_message
 		{
 			Name: "add_ticket_message", Roles: signedIn, Description: "Tambahkan pesan ke tiket.",
 			Schema: object(m{"ticket_id": tid, "message": strSchema(1, 2000, "")}, "ticket_id", "message"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
 				return c.Ticket.DoRaw(ctx, "POST", "/api/tickets/"+url.PathEscape(str(a, "ticket_id"))+"/messages", m{"message": str(a, "message")})
 			},
 		},
+		// Tool update_ticket_status
 		{
 			Name: "update_ticket_status", Roles: signedIn,
 			Description: "Ubah status tiket sesuai lifecycle (customer: reopen/close; admin: proses & selesaikan).",
 			Schema: object(m{"ticket_id": tid, "status": enumSchema(ticketStates...),
 				"resolution_note": strSchema(10, 500, ""), "message": strSchema(0, 2000, "")}, "ticket_id", "status"),
-			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) {
-				body := m{"status": str(a, "status")}
-				if v := str(a, "resolution_note"); v != "" {
+			Run: func(ctx context.Context, c *Clients, a args) (int, []byte) { // eksekusi tool
+				body := m{"status": str(a, "status")}        // status wajib
+				if v := str(a, "resolution_note"); v != "" { // catatan penyelesaian opsional
 					body["resolution_note"] = v
 				}
-				if v := str(a, "message"); v != "" {
+				if v := str(a, "message"); v != "" { // pesan opsional
 					body["message"] = v
 				}
 				return c.Ticket.DoRaw(ctx, "PATCH", "/api/tickets/"+url.PathEscape(str(a, "ticket_id")), body)
@@ -293,7 +316,7 @@ func definitions() []def {
 // Names: semua nama tool (urutan definisi).
 func Names() []string {
 	var n []string
-	for _, d := range definitions() {
+	for _, d := range definitions() { // telusuri definisi
 		n = append(n, d.Name)
 	}
 	return n
@@ -302,16 +325,16 @@ func Names() []string {
 // NewServer membangun mcp.Server untuk SATU identitas: hanya tool yang terlihat oleh role pemanggil.
 // Identitas ditangkap lewat closure (bukan dari argumen tool) dan diteruskan ke service domain.
 func NewServer(id httputil.Identity, c *Clients) *mcp.Server {
-	srv := mcp.NewServer(&mcp.Implementation{Name: "service-mcp", Version: "0.1.0"}, nil)
-	for _, d := range definitions() {
-		if !slices.Contains(d.Roles, id.Role) {
+	srv := mcp.NewServer(&mcp.Implementation{Name: "service-mcp", Version: "0.1.0"}, nil) // server MCP baru
+	for _, d := range definitions() {                                                     // daftarkan tool yang sesuai role
+		if !slices.Contains(d.Roles, id.Role) { // role tidak berhak: sembunyikan tool
 			continue
 		}
-		d := d
-		tool := &mcp.Tool{Name: d.Name, Description: d.Description, InputSchema: compile(d.Schema)}
+		d := d                                                                                      // salinan agar closure aman
+		tool := &mcp.Tool{Name: d.Name, Description: d.Description, InputSchema: compile(d.Schema)} // metadata tool
 		mcp.AddTool(srv, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in args) (*mcp.CallToolResult, any, error) {
-			ctx = httputil.WithIdentity(ctx, id)
-			status, body := d.Run(ctx, c, in)
+			ctx = httputil.WithIdentity(ctx, id) // identitas dari closure, bukan dari argumen
+			status, body := d.Run(ctx, c, in)    // jalankan tool ke service domain
 			// Body REST diteruskan APA ADANYA ({data,meta} atau {error}); status >= 400 => IsError.
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: string(body)}},

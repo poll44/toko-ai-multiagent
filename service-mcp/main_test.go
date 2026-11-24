@@ -1,28 +1,30 @@
-package main
+package main // test untuk service-mcp (package main)
 
-import (
-	"context"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"sync"
-	"testing"
-	"time"
+import ( // package yang dipakai
+	"context"           // context
+	"net/http"          // tipe HTTP
+	"net/http/httptest" // server uji
+	"strings"           // utilitas string
+	"sync"              // mutex & WaitGroup
+	"testing"           // framework test
+	"time"              // timeout
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp" // SDK klien MCP
 
-	"toko-ai-microservices/internal/shared/svcclient"
-	"toko-ai-microservices/service-mcp/internal/tools"
+	"toko-ai-microservices/internal/shared/svcclient"  // klien service-ke-service
+	"toko-ai-microservices/service-mcp/internal/tools" // tools yang diuji
 )
 
+// key: internal API key yang dipakai pada test.
 const key = "mcp-test-key"
 
 // upstream mencatat request yang diterima service domain palsu.
 type upstream struct {
-	mu   sync.Mutex
-	reqs []*http.Request
+	mu   sync.Mutex      // melindungi reqs
+	reqs []*http.Request // request yang diterima
 }
 
+// last mengembalikan request terakhir (nil bila belum ada).
 func (u *upstream) last() *http.Request {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -32,24 +34,26 @@ func (u *upstream) last() *http.Request {
 	return u.reqs[len(u.reqs)-1]
 }
 
+// count mengembalikan jumlah request yang diterima.
 func (u *upstream) count() int { u.mu.Lock(); defer u.mu.Unlock(); return len(u.reqs) }
 
+// newUpstream menjalankan service domain palsu dengan beberapa respons tetap.
 func newUpstream(t *testing.T) (*httptest.Server, *upstream) {
 	u := &upstream{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u.mu.Lock()
-		u.reqs = append(u.reqs, r.Clone(context.Background()))
+		u.reqs = append(u.reqs, r.Clone(context.Background())) // rekam request
 		u.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.URL.Path == "/api/orders/ORD-005":
+		case r.URL.Path == "/api/orders/ORD-005": // pesanan milik orang lain => 404
 			w.WriteHeader(404)
 			_, _ = w.Write([]byte(`{"error":{"code":"NOT_FOUND","message":"Pesanan tidak ditemukan.","details":null,"request_id":"x"}}`))
-		case r.URL.Path == "/api/products/semantic-search":
+		case r.URL.Path == "/api/products/semantic-search": // hasil pencarian semantik
 			_, _ = w.Write([]byte(`{"data":[{"id":"PRD-014","score":0.81}],"meta":{"mode":"semantic","total":1}}`))
-		case r.URL.Path == "/api/products/PRD-003":
+		case r.URL.Path == "/api/products/PRD-003": // detail produk
 			_, _ = w.Write([]byte(`{"data":{"id":"PRD-003","name":"Powerbank","description":"panjang","stock":80,"stock_status":"IN_STOCK","price":299000}}`))
-		default:
+		default: // respons generik
 			_, _ = w.Write([]byte(`{"data":{"ok":true}}`))
 		}
 	}))
@@ -57,8 +61,10 @@ func newUpstream(t *testing.T) (*httptest.Server, *upstream) {
 	return srv, u
 }
 
+// headerRT: RoundTripper yang menyuntik header tetap pada setiap request.
 type headerRT struct{ h map[string]string }
 
+// RoundTrip menyalin request, menambahkan header, lalu meneruskannya.
 func (rt headerRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
 	for k, v := range rt.h {
@@ -67,19 +73,21 @@ func (rt headerRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(r)
 }
 
+// setup menyiapkan service-mcp uji yang terhubung ke upstream palsu; mengembalikan URL /mcp & perekam upstream.
 func setup(t *testing.T) (mcpURL string, up *upstream) {
 	t.Helper()
 	us, up := newUpstream(t)
-	mk := func() *svcclient.Client { return svcclient.New(us.URL, key, "service-mcp", 2*time.Second) }
-	h := newHandler(key, &tools.Clients{Catalog: mk(), Order: mk(), Ticket: mk()})
+	mk := func() *svcclient.Client { return svcclient.New(us.URL, key, "service-mcp", 2*time.Second) } // klien ke upstream palsu
+	h := newHandler(key, &tools.Clients{Catalog: mk(), Order: mk(), Ticket: mk()})                     // handler yang diuji
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv.URL + "/mcp", up
 }
 
+// connect membuka sesi MCP dengan identitas (userID, role) tertentu.
 func connect(t *testing.T, url, userID, role string) *mcp.ClientSession {
 	t.Helper()
-	hdr := map[string]string{"x-internal-api-key": key, "x-user-id": userID, "x-user-role": role}
+	hdr := map[string]string{"x-internal-api-key": key, "x-user-id": userID, "x-user-role": role} // header identitas
 	c := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil)
 	sess, err := c.Connect(context.Background(), &mcp.StreamableClientTransport{
 		Endpoint: url, HTTPClient: &http.Client{Transport: headerRT{hdr}}, DisableStandaloneSSE: true,
@@ -87,10 +95,11 @@ func connect(t *testing.T, url, userID, role string) *mcp.ClientSession {
 	if err != nil {
 		t.Fatalf("connect %s/%s: %v", userID, role, err)
 	}
-	t.Cleanup(func() { sess.Close() })
+	t.Cleanup(func() { sess.Close() }) // tutup sesi saat test selesai
 	return sess
 }
 
+// toolNames mengambil daftar nama tool yang terlihat oleh sesi.
 func toolNames(t *testing.T, s *mcp.ClientSession) []string {
 	res, err := s.ListTools(context.Background(), nil)
 	if err != nil {
@@ -103,6 +112,7 @@ func toolNames(t *testing.T, s *mcp.ClientSession) []string {
 	return n
 }
 
+// text menggabungkan seluruh konten teks hasil tool.
 func text(r *mcp.CallToolResult) string {
 	var b strings.Builder
 	for _, c := range r.Content {
@@ -113,6 +123,7 @@ func text(r *mcp.CallToolResult) string {
 	return b.String()
 }
 
+// call memanggil satu tool dan menggagalkan test bila ada error transport.
 func call(t *testing.T, s *mcp.ClientSession, name string, args map[string]any) *mcp.CallToolResult {
 	t.Helper()
 	r, err := s.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
@@ -122,9 +133,10 @@ func call(t *testing.T, s *mcp.ClientSession, name string, args map[string]any) 
 	return r
 }
 
+// TestAuthRejectedBeforeHandshake: request tanpa kunci/identitas valid ditolak sebelum handshake MCP.
 func TestAuthRejectedBeforeHandshake(t *testing.T) {
 	url, _ := setup(t)
-	post := func(hdr map[string]string) int {
+	post := func(hdr map[string]string) int { // kirim POST dengan header tertentu, kembalikan status
 		req, _ := http.NewRequest("POST", url, strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		for k, v := range hdr {
@@ -137,30 +149,31 @@ func TestAuthRejectedBeforeHandshake(t *testing.T) {
 		res.Body.Close()
 		return res.StatusCode
 	}
-	if c := post(nil); c != 401 {
+	if c := post(nil); c != 401 { // tanpa kunci
 		t.Fatalf("tanpa key harus 401, dapat %d", c)
 	}
-	if c := post(map[string]string{"x-internal-api-key": key, "x-user-id": "USR-01", "x-user-role": "HACKER"}); c != 403 {
+	if c := post(map[string]string{"x-internal-api-key": key, "x-user-id": "USR-01", "x-user-role": "HACKER"}); c != 403 { // role tak valid
 		t.Fatalf("role tidak valid harus 403, dapat %d", c)
 	}
-	if c := post(map[string]string{"x-internal-api-key": key, "x-user-id": "root; drop", "x-user-role": "CUSTOMER"}); c != 400 {
+	if c := post(map[string]string{"x-internal-api-key": key, "x-user-id": "root; drop", "x-user-role": "CUSTOMER"}); c != 400 { // user id tak valid
 		t.Fatalf("user id tidak valid harus 400, dapat %d", c)
 	}
 }
 
+// TestToolVisibilityPerRole: jumlah & jenis tool yang terlihat harus sesuai role.
 func TestToolVisibilityPerRole(t *testing.T) {
 	url, _ := setup(t)
-	if n := len(tools.Names()); n != 17 {
+	if n := len(tools.Names()); n != 17 { // total tool
 		t.Fatalf("total tool harus 17, dapat %d", n)
 	}
-	want := map[string]int{"GUEST": 6, "CUSTOMER": 16, "ADMIN_SISTEM": 13, "ADMIN_DEV": 12}
-	ids := map[string]string{"GUEST": "GUEST", "CUSTOMER": "USR-01", "ADMIN_SISTEM": "ADM-01", "ADMIN_DEV": "DEV-01"}
+	want := map[string]int{"GUEST": 6, "CUSTOMER": 16, "ADMIN_SISTEM": 13, "ADMIN_DEV": 12}                           // jumlah tool per role
+	ids := map[string]string{"GUEST": "GUEST", "CUSTOMER": "USR-01", "ADMIN_SISTEM": "ADM-01", "ADMIN_DEV": "DEV-01"} // id per role
 	for role, n := range want {
 		names := toolNames(t, connect(t, url, ids[role], role))
 		if len(names) != n {
 			t.Errorf("%s: harus %d tool, dapat %d: %v", role, n, len(names), names)
 		}
-		has := func(x string) bool {
+		has := func(x string) bool { // apakah tool x terlihat
 			for _, v := range names {
 				if v == x {
 					return true
@@ -168,31 +181,32 @@ func TestToolVisibilityPerRole(t *testing.T) {
 			}
 			return false
 		}
-		if !has("semantic_search_products") || !has("search_store_policy") {
+		if !has("semantic_search_products") || !has("search_store_policy") { // tool publik wajib terlihat
 			t.Errorf("%s harus melihat semantic_search_products & search_store_policy", role)
 		}
-		if has("adjust_product_stock") != (role == "ADMIN_SISTEM") {
+		if has("adjust_product_stock") != (role == "ADMIN_SISTEM") { // hanya admin sistem
 			t.Errorf("%s: adjust_product_stock hanya untuk ADMIN_SISTEM", role)
 		}
-		if has("create_order") != (role == "CUSTOMER") {
+		if has("create_order") != (role == "CUSTOMER") { // hanya pelanggan
 			t.Errorf("%s: create_order hanya untuk CUSTOMER", role)
 		}
 	}
 }
 
+// TestIdentityForwardedAndErrorPassthrough: identitas diteruskan ke upstream dan error upstream diteruskan apa adanya.
 func TestIdentityForwardedAndErrorPassthrough(t *testing.T) {
 	url, up := setup(t)
 	s := connect(t, url, "USR-01", "CUSTOMER")
 
-	r := call(t, s, "get_order", map[string]any{"order_id": "ORD-005"})
+	r := call(t, s, "get_order", map[string]any{"order_id": "ORD-005"}) // upstream menjawab 404
 	if !r.IsError || !strings.Contains(text(r), `"code":"NOT_FOUND"`) {
 		t.Fatalf("404 upstream harus jadi isError dengan body error asli: %v %s", r.IsError, text(r))
 	}
-	req := up.last()
+	req := up.last() // request yang diterima upstream
 	if req == nil || req.URL.Path != "/api/orders/ORD-005" {
 		t.Fatalf("path upstream: %+v", req)
 	}
-	for h, want := range map[string]string{
+	for h, want := range map[string]string{ // header yang wajib diteruskan
 		"x-user-id": "USR-01", "x-user-role": "CUSTOMER", "x-internal-api-key": key, "x-service-name": "service-mcp",
 	} {
 		if got := req.Header.Get(h); got != want {
@@ -204,6 +218,7 @@ func TestIdentityForwardedAndErrorPassthrough(t *testing.T) {
 	}
 }
 
+// TestSemanticAndPolicyPassthrough: pemetaan argumen tool ke query upstream & penyaringan check_stock.
 func TestSemanticAndPolicyPassthrough(t *testing.T) {
 	url, up := setup(t)
 	s := connect(t, url, "GUEST", "GUEST")
@@ -212,20 +227,20 @@ func TestSemanticAndPolicyPassthrough(t *testing.T) {
 	if r.IsError {
 		t.Fatalf("seharusnya sukses: %s", text(r))
 	}
-	if !strings.Contains(text(r), `"mode":"semantic"`) || !strings.Contains(text(r), `"score":0.81`) {
+	if !strings.Contains(text(r), `"mode":"semantic"`) || !strings.Contains(text(r), `"score":0.81`) { // meta & score diteruskan
 		t.Fatalf("meta & score harus diteruskan: %s", text(r))
 	}
 	req := up.last()
-	if req.URL.Path != "/api/products/semantic-search" || req.URL.Query().Get("q") != "mouse yang tidak bikin pergelangan pegal" {
+	if req.URL.Path != "/api/products/semantic-search" || req.URL.Query().Get("q") != "mouse yang tidak bikin pergelangan pegal" { // mapping q
 		t.Fatalf("mapping q: %s", req.URL.String())
 	}
-	if req.URL.Query().Get("limit") != "5" {
+	if req.URL.Query().Get("limit") != "5" { // default limit
 		t.Fatalf("default limit 5 harus diterapkan: %s", req.URL.RawQuery)
 	}
 
 	call(t, s, "search_store_policy", map[string]any{"query": "syarat retur barang rusak", "category": "RETURN"})
 	req = up.last()
-	if req.URL.Path != "/api/knowledge/search" || req.URL.Query().Get("category") != "RETURN" || req.URL.Query().Get("limit") != "3" {
+	if req.URL.Path != "/api/knowledge/search" || req.URL.Query().Get("category") != "RETURN" || req.URL.Query().Get("limit") != "3" { // mapping kebijakan
 		t.Fatalf("mapping policy: %s", req.URL.String())
 	}
 
@@ -236,12 +251,13 @@ func TestSemanticAndPolicyPassthrough(t *testing.T) {
 	}
 }
 
+// TestInputValidationRejectedBeforeUpstream: input tidak valid ditolak oleh skema sebelum menyentuh upstream.
 func TestInputValidationRejectedBeforeUpstream(t *testing.T) {
 	url, up := setup(t)
 	cust := connect(t, url, "USR-01", "CUSTOMER")
-	before := up.count()
+	before := up.count() // jumlah request upstream sebelum uji
 
-	bad := []struct {
+	bad := []struct { // kasus input yang harus ditolak
 		name string
 		tool string
 		args map[string]any
@@ -256,11 +272,11 @@ func TestInputValidationRejectedBeforeUpstream(t *testing.T) {
 	}
 	for _, b := range bad {
 		r, err := cust.CallTool(context.Background(), &mcp.CallToolParams{Name: b.tool, Arguments: b.args})
-		if err == nil && !r.IsError {
+		if err == nil && !r.IsError { // harus error
 			t.Errorf("%s: harus ditolak", b.name)
 		}
 	}
-	if up.count() != before {
+	if up.count() != before { // upstream tidak boleh tersentuh
 		t.Fatalf("input tidak valid tidak boleh sampai ke upstream (%d -> %d)", before, up.count())
 	}
 
@@ -271,30 +287,31 @@ func TestInputValidationRejectedBeforeUpstream(t *testing.T) {
 	}
 }
 
+// TestConcurrentIdentitiesDoNotLeak: panggilan paralel dari beberapa user tidak boleh saling bocor identitas.
 func TestConcurrentIdentitiesDoNotLeak(t *testing.T) {
 	url, up := setup(t)
-	users := []struct{ id, role string }{{"USR-01", "CUSTOMER"}, {"USR-02", "CUSTOMER"}, {"ADM-01", "ADMIN_SISTEM"}, {"DEV-01", "ADMIN_DEV"}}
+	users := []struct{ id, role string }{{"USR-01", "CUSTOMER"}, {"USR-02", "CUSTOMER"}, {"ADM-01", "ADMIN_SISTEM"}, {"DEV-01", "ADMIN_DEV"}} // empat identitas
 	var wg sync.WaitGroup
 	for _, u := range users {
 		s := connect(t, url, u.id, u.role)
 		wg.Add(1)
-		go func(id string) {
+		go func(id string) { // tiap user memanggil 5 kali secara paralel
 			defer wg.Done()
 			for i := 0; i < 5; i++ {
 				call(t, s, "list_my_orders", map[string]any{})
 			}
 		}(u.id)
 	}
-	wg.Wait()
+	wg.Wait() // tunggu semua selesai
 	up.mu.Lock()
 	defer up.mu.Unlock()
-	seen := map[string]int{}
+	seen := map[string]int{} // jumlah request per identitas di sisi upstream
 	for _, r := range up.reqs {
 		if r.URL.Path == "/api/orders" {
 			seen[r.Header.Get("x-user-id")+"/"+r.Header.Get("x-user-role")]++
 		}
 	}
-	for _, u := range users {
+	for _, u := range users { // tiap identitas harus tepat 5 request
 		if seen[u.id+"/"+u.role] != 5 {
 			t.Errorf("%s/%s harus 5 request dengan identitasnya sendiri, dapat %v", u.id, u.role, seen)
 		}

@@ -1,53 +1,63 @@
-package handlers_test
+package handlers_test // test black-box untuk handler service-ticket
 
-import (
-	"context"
-	"encoding/json"
-	"hash/fnv"
-	"net/http"
-	"net/http/httptest"
-	"path/filepath"
-	"regexp"
-	"strings"
-	"sync/atomic"
-	"testing"
-	"time"
+import ( // package yang dipakai
+	"context"           // context
+	"encoding/json"     // encode/decode JSON
+	"hash/fnv"          // hash kata untuk fake embedder
+	"net/http"          // tipe HTTP
+	"net/http/httptest" // server uji
+	"path/filepath"     // path database sementara
+	"regexp"            // pemecah kata
+	"strings"           // utilitas string
+	"sync/atomic"       // penghitung & flag atomik
+	"testing"           // framework test
+	"time"              // timeout
 
-	"toko-ai-microservices/internal/shared/embedding"
-	"toko-ai-microservices/internal/shared/vector"
-	"toko-ai-microservices/service-ticket/internal/handlers"
-	"toko-ai-microservices/service-ticket/internal/knowledge"
-	"toko-ai-microservices/service-ticket/internal/orderclient"
-	"toko-ai-microservices/service-ticket/internal/service"
-	"toko-ai-microservices/service-ticket/internal/store"
+	"toko-ai-microservices/internal/shared/embedding"           // tipe Task & ErrUnavailable
+	"toko-ai-microservices/internal/shared/vector"              // normalisasi vektor
+	"toko-ai-microservices/service-ticket/internal/handlers"    // paket yang diuji
+	"toko-ai-microservices/service-ticket/internal/knowledge"   // indexer & seed KB
+	"toko-ai-microservices/service-ticket/internal/orderclient" // klien order
+	"toko-ai-microservices/service-ticket/internal/service"     // logika bisnis
+	"toko-ai-microservices/service-ticket/internal/store"       // repository
 )
 
+// key: internal API key yang dipakai pada test.
 const key = "ticket-test-key"
 
 // fakeEmbedder: bag-of-words hashing 1024 dimensi — deterministik, tanpa jaringan (leksikal, bukan semantik sungguhan).
 type fakeEmbedder struct{ enabled bool }
 
-var wordRe = regexp.MustCompile(`[a-z0-9]+`)
-var stop = map[string]bool{"yang": true, "dan": true, "untuk": true, "dengan": true, "apa": true, "berapa": true, "bagaimana": true, "atau": true, "dari": true}
+var wordRe = regexp.MustCompile(`[a-z0-9]+`)                                                                                                                     // pemecah kata
+var stop = map[string]bool{"yang": true, "dan": true, "untuk": true, "dengan": true, "apa": true, "berapa": true, "bagaimana": true, "atau": true, "dari": true} // kata yang diabaikan
 
+// Enabled: apakah embedder aktif.
 func (f fakeEmbedder) Enabled() bool { return f.enabled }
+
+// Model: nama model palsu.
 func (f fakeEmbedder) Model() string { return "fake-bow" }
-func (f fakeEmbedder) Dim() int      { return 1024 }
+
+// Dim: dimensi vektor palsu.
+func (f fakeEmbedder) Dim() int { return 1024 }
+
+// Embed membuat vektor dengan menghitung hash tiap kata ke 1024 slot, lalu menormalkannya.
 func (f fakeEmbedder) Embed(_ context.Context, text string, _ embedding.Task) ([]float32, error) {
-	if !f.enabled {
+	if !f.enabled { // embedding mati
 		return nil, embedding.ErrUnavailable
 	}
 	v := make([]float32, 1024)
-	for _, w := range wordRe.FindAllString(strings.ToLower(text), -1) {
-		if stop[w] {
+	for _, w := range wordRe.FindAllString(strings.ToLower(text), -1) { // tiap kata
+		if stop[w] { // lewati stopword
 			continue
 		}
 		h := fnv.New32a()
 		h.Write([]byte(w))
-		v[h.Sum32()%1024]++
+		v[h.Sum32()%1024]++ // tambah hitungan di slot hasil hash
 	}
 	return vector.Normalize(v), nil
 }
+
+// EmbedBatch meng-embed banyak teks satu per satu.
 func (f fakeEmbedder) EmbedBatch(ctx context.Context, texts []string, t embedding.Task) ([][]float32, error) {
 	out := make([][]float32, len(texts))
 	for i, s := range texts {
@@ -62,26 +72,28 @@ func (f fakeEmbedder) EmbedBatch(ctx context.Context, texts []string, t embeddin
 
 // fakeOrder: service-order palsu; kepemilikan order ditentukan dari x-user-id.
 type fakeOrder struct {
-	down  atomic.Bool
-	calls atomic.Int32
+	down  atomic.Bool  // true = simulasi service-order mati
+	calls atomic.Int32 // jumlah panggilan yang diterima
 }
 
+// orderOwners: pemilik tiap pesanan pada data palsu.
 var orderOwners = map[string]string{"ORD-001": "USR-01", "ORD-003": "USR-01", "ORD-005": "USR-02", "ORD-008": "USR-02"}
 
+// newFakeOrder menjalankan service-order palsu.
 func newFakeOrder(t *testing.T) (*httptest.Server, *fakeOrder) {
 	fo := &fakeOrder{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fo.calls.Add(1)
-		if fo.down.Load() {
+		fo.calls.Add(1)     // hitung panggilan
+		if fo.down.Load() { // simulasi koneksi terputus
 			hj, _ := w.(http.Hijacker)
 			c, _, _ := hj.Hijack()
 			c.Close()
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		id := strings.TrimPrefix(r.URL.Path, "/api/orders/")
+		id := strings.TrimPrefix(r.URL.Path, "/api/orders/") // ID pesanan dari path
 		if r.Header.Get("x-internal-api-key") != key || r.Header.Get("x-service-name") != "service-ticket" ||
-			orderOwners[id] != r.Header.Get("x-user-id") {
+			orderOwners[id] != r.Header.Get("x-user-id") { // kunci/pemanggil salah atau bukan pemilik => 404
 			w.WriteHeader(404)
 			_, _ = w.Write([]byte(`{"error":{"code":"NOT_FOUND","message":"Pesanan tidak ditemukan.","details":null,"request_id":"x"}}`))
 			return
@@ -92,63 +104,68 @@ func newFakeOrder(t *testing.T) (*httptest.Server, *fakeOrder) {
 	return srv, fo
 }
 
+// env: lingkungan uji (server HTTP + order palsu + indexer).
 type env struct {
-	srv *httptest.Server
-	fo  *fakeOrder
-	ix  *knowledge.Indexer
+	srv *httptest.Server   // server service-ticket
+	fo  *fakeOrder         // order palsu
+	ix  *knowledge.Indexer // indexer KB
 }
 
+// setup menyiapkan database sementara, seed tiket & KB, indexer, order palsu, dan server uji.
 func setup(t *testing.T, embEnabled bool) *env {
 	t.Helper()
 	ctx := context.Background()
-	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "ticket.db"))
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "ticket.db")) // database sementara
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
 	repo := store.NewRepo(db)
-	if err := repo.SeedTickets(ctx); err != nil {
+	if err := repo.SeedTickets(ctx); err != nil { // isi 5 tiket contoh
 		t.Fatal(err)
 	}
-	if err := knowledge.SeedDocs(ctx, repo); err != nil {
+	if err := knowledge.SeedDocs(ctx, repo); err != nil { // isi 8 dokumen kebijakan
 		t.Fatal(err)
 	}
 	ix := knowledge.NewIndexer(repo, fakeEmbedder{enabled: embEnabled})
-	if embEnabled {
+	if embEnabled { // indeks semua chunk
 		if _, err := ix.IndexPending(ctx, false, 0); err != nil {
 			t.Fatal(err)
 		}
 	}
 	os, fo := newFakeOrder(t)
-	svc := service.New(repo, orderclient.New(os.URL, key, 2*time.Second))
+	svc := service.New(repo, orderclient.New(os.URL, key, 2*time.Second)) // service dengan klien order palsu
 	mux := http.NewServeMux()
-	handlers.Register(mux, key, &handlers.Deps{Svc: svc, Repo: repo, Index: ix, MinScore: 0.05})
+	handlers.Register(mux, key, &handlers.Deps{Svc: svc, Repo: repo, Index: ix, MinScore: 0.05}) // daftarkan rute
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return &env{srv: srv, fo: fo, ix: ix}
 }
 
+// resp: ringkasan respons HTTP.
 type resp struct {
-	Status int
-	Body   map[string]any
-	Header http.Header
+	Status int            // status code
+	Body   map[string]any // body JSON
+	Header http.Header    // header respons
 }
 
+// users: pemetaan nama pelaku uji ke (id, role).
 var users = map[string][2]string{
 	"BUDI": {"USR-01", "CUSTOMER"}, "SITI": {"USR-02", "CUSTOMER"}, "ADMIN": {"ADM-01", "ADMIN_SISTEM"},
 	"DEV": {"DEV-01", "ADMIN_DEV"}, "GUEST": {"GUEST", "GUEST"},
 }
 
+// do mengirim request sebagai pelaku `who` ("NOKEY" = tanpa internal key).
 func (e *env) do(t *testing.T, who, method, path, body string) resp {
 	t.Helper()
 	req, _ := http.NewRequest(method, e.srv.URL+path, strings.NewReader(body))
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if who != "NOKEY" {
+	if who != "NOKEY" { // sertakan internal key
 		req.Header.Set("x-internal-api-key", key)
 	}
-	if u, ok := users[who]; ok {
+	if u, ok := users[who]; ok { // sertakan identitas
 		req.Header.Set("x-user-id", u[0])
 		req.Header.Set("x-user-role", u[1])
 	}
@@ -162,13 +179,18 @@ func (e *env) do(t *testing.T, who, method, path, body string) resp {
 	return resp{res.StatusCode, m, res.Header}
 }
 
+// code mengambil kode error dari respons ("" bila bukan error).
 func code(r resp) string {
 	if e, ok := r.Body["error"].(map[string]any); ok {
 		return e["code"].(string)
 	}
 	return ""
 }
+
+// data mengambil objek "data" dari respons.
 func data(r resp) map[string]any { return r.Body["data"].(map[string]any) }
+
+// ids mengambil daftar field "id" dari data respons daftar.
 func ids(r resp) []string {
 	var out []string
 	for _, it := range r.Body["data"].([]any) {
@@ -176,6 +198,8 @@ func ids(r resp) []string {
 	}
 	return out
 }
+
+// has: true bila list memuat s.
 func has(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {
@@ -187,6 +211,7 @@ func has(list []string, s string) bool {
 
 // ───────────────────────── tiket ─────────────────────────
 
+// TestAuthAndIsolation: autentikasi, isolasi tiket antar pelanggan, filter, dan detail tiket.
 func TestAuthAndIsolation(t *testing.T) {
 	e := setup(t, false)
 	if r := e.do(t, "NOKEY", "GET", "/api/tickets", ""); r.Status != 401 || code(r) != "INVALID_INTERNAL_KEY" {
@@ -204,7 +229,7 @@ func TestAuthAndIsolation(t *testing.T) {
 	if r := e.do(t, "BUDI", "GET", "/api/tickets/TKT-003", ""); r.Status != 404 || code(r) != "NOT_FOUND" {
 		t.Fatalf("Budi -> TKT-003: %d %s", r.Status, code(r))
 	}
-	for _, who := range []string{"ADMIN", "DEV"} {
+	for _, who := range []string{"ADMIN", "DEV"} { // admin & dev melihat semua tiket
 		if n := len(ids(e.do(t, who, "GET", "/api/tickets?limit=100", ""))); n != 5 {
 			t.Fatalf("%s harus melihat 5 tiket: %d", who, n)
 		}
@@ -228,9 +253,10 @@ func TestAuthAndIsolation(t *testing.T) {
 	}
 }
 
+// TestCreateTicket: pembuatan tiket (validasi order ke service-order, duplikat, prioritas, validasi, role).
 func TestCreateTicket(t *testing.T) {
 	e := setup(t, false)
-	mk := func(who, body string) resp { return e.do(t, who, "POST", "/api/tickets", body) }
+	mk := func(who, body string) resp { return e.do(t, who, "POST", "/api/tickets", body) } // pembantu membuat tiket
 	const base = `"subject":"Barang bermasalah","description":"Deskripsi masalah yang cukup panjang.","category":"PRODUCT"`
 
 	// sukses: order milik sendiri tanpa tiket aktif (TKT-002 sudah RESOLVED)
@@ -289,16 +315,17 @@ func TestCreateTicket(t *testing.T) {
 			t.Errorf("%s: %d %s", name, r.Status, code(r))
 		}
 	}
-	for _, who := range []string{"ADMIN", "DEV", "GUEST"} {
+	for _, who := range []string{"ADMIN", "DEV", "GUEST"} { // hanya CUSTOMER yang boleh membuat tiket
 		if r := mk(who, `{`+base+`}`); r.Status != 403 {
 			t.Errorf("%s create: %d", who, r.Status)
 		}
 	}
 }
 
+// TestLifecycleAndRBAC: siklus hidup status tiket dan pembatasan hak akses per role.
 func TestLifecycleAndRBAC(t *testing.T) {
 	e := setup(t, false)
-	patch := func(who, tid, body string) resp { return e.do(t, who, "PATCH", "/api/tickets/"+tid+"/status", body) }
+	patch := func(who, tid, body string) resp { return e.do(t, who, "PATCH", "/api/tickets/"+tid+"/status", body) } // pembantu PATCH status
 
 	// TKT-004 (TECHNICAL, milik Siti)
 	if r := patch("SITI", "TKT-004", `{"status":"IN_PROGRESS"}`); r.Status != 403 {
@@ -379,9 +406,10 @@ func TestLifecycleAndRBAC(t *testing.T) {
 	}
 }
 
+// TestMessages: penambahan pesan oleh pelanggan/admin/dev dan batasannya.
 func TestMessages(t *testing.T) {
 	e := setup(t, false)
-	post := func(who, tid, body string) resp { return e.do(t, who, "POST", "/api/tickets/"+tid+"/messages", body) }
+	post := func(who, tid, body string) resp { return e.do(t, who, "POST", "/api/tickets/"+tid+"/messages", body) } // pembantu kirim pesan
 	r := post("BUDI", "TKT-001", `{"message":"Saya sudah isi saldo lagi."}`)
 	if r.Status != 201 || data(r)["author_id"] != "USR-01" || data(r)["author_role"] != "CUSTOMER" {
 		t.Fatalf("customer msg: %d %v", r.Status, r.Body)
@@ -402,16 +430,17 @@ func TestMessages(t *testing.T) {
 		t.Fatalf("CLOSED msg: %d", r.Status)
 	}
 	d := data(e.do(t, "BUDI", "GET", "/api/tickets/TKT-001", ""))
-	if len(d["messages"].([]any)) != 3 {
+	if len(d["messages"].([]any)) != 3 { // 1 awal + 2 baru
 		t.Fatalf("jumlah pesan: %d", len(d["messages"].([]any)))
 	}
 }
 
 // ───────────────────────── knowledge base ─────────────────────────
 
+// TestKnowledgeSemanticSearch: pencarian KB semantik (peringkat, maks 2 chunk/dokumen, filter, validasi).
 func TestKnowledgeSemanticSearch(t *testing.T) {
 	e := setup(t, true)
-	search := func(who, q string) resp {
+	search := func(who, q string) resp { // pembantu pencarian
 		return e.do(t, who, "GET", "/api/knowledge/search?q="+strings.ReplaceAll(q, " ", "%20"), "")
 	}
 	// GUEST boleh
@@ -420,7 +449,7 @@ func TestKnowledgeSemanticSearch(t *testing.T) {
 		t.Fatalf("status %d: %v", r.Status, r.Body)
 	}
 	got := r.Body["data"].([]any)
-	if len(got) == 0 || got[0].(map[string]any)["document_id"] != "KB-005" {
+	if len(got) == 0 || got[0].(map[string]any)["document_id"] != "KB-005" { // KB-005 peringkat 1
 		t.Fatalf("KB-005 harus peringkat 1: %v", got)
 	}
 	first := got[0].(map[string]any)
@@ -437,7 +466,7 @@ func TestKnowledgeSemanticSearch(t *testing.T) {
 	}
 	// maks 2 chunk per dokumen & limit
 	r = e.do(t, "GUEST", "GET", "/api/knowledge/search?q=pesanan%20pembayaran%20refund%20retur%20garansi&limit=5", "")
-	perDoc := map[string]int{}
+	perDoc := map[string]int{} // jumlah chunk per dokumen
 	for _, it := range r.Body["data"].([]any) {
 		perDoc[it.(map[string]any)["document_id"].(string)]++
 	}
@@ -469,6 +498,7 @@ func TestKnowledgeSemanticSearch(t *testing.T) {
 	}
 }
 
+// TestKnowledgeKeywordFallback: tanpa embedding, pencarian KB jatuh ke keyword_fallback dengan skor null.
 func TestKnowledgeKeywordFallback(t *testing.T) {
 	e := setup(t, false) // embedding mati
 	r := e.do(t, "GUEST", "GET", "/api/knowledge/search?q=garansi%20bulan", "")
@@ -481,10 +511,11 @@ func TestKnowledgeKeywordFallback(t *testing.T) {
 	}
 }
 
+// TestKnowledgeDocumentsAdmin: CRUD dokumen KB (hak akses, indexing otomatis, soft delete, reindex).
 func TestKnowledgeDocumentsAdmin(t *testing.T) {
 	e := setup(t, true)
 	body := `{"title":"Program Cicilan Nol Persen","category":"PAYMENT","content":"Toko menyediakan program cicilan nol persen untuk pembelian kartu kredit tertentu selama 3 bulan."}`
-	for _, who := range []string{"BUDI", "DEV", "GUEST"} {
+	for _, who := range []string{"BUDI", "DEV", "GUEST"} { // hanya ADMIN_SISTEM yang boleh membuat
 		if r := e.do(t, who, "POST", "/api/knowledge/documents", body); r.Status != 403 {
 			t.Errorf("%s create: %d", who, r.Status)
 		}
@@ -495,7 +526,7 @@ func TestKnowledgeDocumentsAdmin(t *testing.T) {
 	if r.Status != 200 || len(docs) != 8 {
 		t.Fatalf("daftar: %d %d", r.Status, len(docs))
 	}
-	if _, has := docs[0].(map[string]any)["content"]; has {
+	if _, has := docs[0].(map[string]any)["content"]; has { // daftar tanpa content
 		t.Fatal("daftar tidak boleh memuat content")
 	}
 	if docs[0].(map[string]any)["chunk_count"].(float64) < 1 {
@@ -553,7 +584,7 @@ func TestKnowledgeDocumentsAdmin(t *testing.T) {
 	if r := e.do(t, "ADMIN", "POST", "/api/knowledge/reindex", ""); r.Status != 202 || data(r)["queued"].(float64) < 8 {
 		t.Fatalf("reindex: %d %v", r.Status, r.Body)
 	}
-	e2 := setup(t, false)
+	e2 := setup(t, false) // embedding mati
 	if r := e2.do(t, "ADMIN", "POST", "/api/knowledge/reindex", ""); r.Status != 503 || code(r) != "EMBEDDING_UNAVAILABLE" {
 		t.Fatalf("reindex tanpa embedding: %d %s", r.Status, code(r))
 	}
